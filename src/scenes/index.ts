@@ -1,8 +1,8 @@
 /**
- * AILEXSI Visualz — Scene registry
+ * AILEXSI Visualz — Built-in scenes
  */
 
-import { registerScene } from "../index";
+import type { Scene } from "../types";
 import { pulseOrbScene } from "./pulse-orb";
 import { spectrumBarsScene } from "./spectrum-bars";
 import { particleFieldScene } from "./particle-field";
@@ -10,15 +10,14 @@ import { resonanceWaveScene } from "./resonance-wave";
 import { tunnelSpiralScene } from "./tunnel-spiral";
 import { litaBloomScene } from "./lita-bloom";
 
-/** Call once at startup to register all built-in scenes */
-export function registerBuiltinScenes(): void {
-  registerScene(pulseOrbScene);
-  registerScene(spectrumBarsScene);
-  registerScene(particleFieldScene);
-  registerScene(resonanceWaveScene);
-  registerScene(tunnelSpiralScene);
-  registerScene(litaBloomScene);
-}
+export const builtinScenes: Scene[] = [
+  pulseOrbScene,
+  spectrumBarsScene,
+  particleFieldScene,
+  resonanceWaveScene,
+  tunnelSpiralScene,
+  litaBloomScene,
+];
 
 export {
   pulseOrbScene,
