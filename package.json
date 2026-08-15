@@ -1,0 +1,31 @@
+{
+  "name": "@ailexsi/visualz",
+  "version": "0.1.0-blueprint",
+  "description": "AILEXSI Visualz — local-first audio-reactive visualizer engine from scratch. No AGPL dependencies.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "ailexsi",
+    "visualizer",
+    "audio-reactive",
+    "web-audio",
+    "canvas",
+    "local-first"
+  ],
+  "author": "AILEXSI",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
