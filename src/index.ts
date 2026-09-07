@@ -1,9 +1,6 @@
 /**
  * AILEXSI Visualz — Public API
- * Version: 0.1.0-blueprint
- *
- * From-scratch audio-reactive visualizer engine.
- * No external visualizer code. No AGPL.
+ * Version: 0.1.1-songlock
  */
 
 import type {
@@ -28,7 +25,6 @@ export interface VisualEngine {
   destroy(): void;
 }
 
-/** Registry of available scenes */
 const sceneRegistry = new Map<string, Scene>();
 
 export function registerScene(scene: Scene): void {
@@ -37,24 +33,23 @@ export function registerScene(scene: Scene): void {
 
 function ensureBuiltinsRegistered(): void {
   if (sceneRegistry.size > 0) return;
-  for (const s of builtinScenes) {
-    sceneRegistry.set(s.id, s);
-  }
+  for (const s of builtinScenes) sceneRegistry.set(s.id, s);
 }
 
-/**
- * Create the visual engine.
- */
-export function createVisualEngine(
-  options: VisualEngineOptions
-): VisualEngine {
-  ensureBuiltinsRegistered();
+function hexToRgb(hex: string): string {
+  const h = String(hex || "#0a0a12").replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16) || 10;
+  const g = parseInt(full.slice(2, 4), 16) || 10;
+  const b = parseInt(full.slice(4, 6), 16) || 18;
+  return `${r},${g},${b}`;
+}
 
+export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
+  ensureBuiltinsRegistered();
   const canvas = options.canvas;
   const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Could not get 2D context from canvas");
-  }
+  if (!ctx) throw new Error("Could not get 2D context from canvas");
 
   let currentSceneId = options.initialSceneId ?? "resonance-wave";
   const initialScene = sceneRegistry.get(currentSceneId) ?? builtinScenes[0];
@@ -73,59 +68,32 @@ export function createVisualEngine(
   let isPlaying = false;
   let rafId: number | null = null;
   let lastFeatures: AudioFeatures = {
-    timeMs: 0,
-    rms: 0,
-    bass: 0,
-    mid: 0,
-    treble: 0,
-    spectrum: new Float32Array(64),
-    onset: false,
-    beatPulse: 0,
+    timeMs: 0, rms: 0, bass: 0, mid: 0, treble: 0,
+    spectrum: new Float32Array(64), onset: false, beatPulse: 0,
   };
-
   let lastTime = performance.now();
   let beatPulseDecay = 0;
 
-  // Call onEnter for initial scene
-  initialScene?.onEnter?.({
-    width: canvas.width,
-    height: canvas.height,
-    ctx,
-  }, params);
+  initialScene?.onEnter?.({ width: canvas.width, height: canvas.height, ctx }, params);
 
   function frame(now: number) {
     if (!isPlaying) return;
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
-
-    // Local decay if host doesn't update beatPulse every frame
-    if (lastFeatures.beatPulse > 0) {
-      beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
-    }
-    beatPulseDecay = Math.max(0, beatPulseDecay - dt * 3.5);
+    if (lastFeatures.beatPulse > 0) beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
+    const energy = lastFeatures.rms + lastFeatures.bass;
+    beatPulseDecay = Math.max(0, beatPulseDecay - dt * (energy < 0.04 ? 8 : 3.2));
     const features: AudioFeatures = {
       ...lastFeatures,
       beatPulse: Math.max(lastFeatures.beatPulse, beatPulseDecay),
     };
-
     const scene = sceneRegistry.get(currentSceneId);
-    // Clear
-    ctx.fillStyle = (params.colorSecondary as string) || "#0a0a12";
+    const rgb = hexToRgb(String(params.colorSecondary || "#0a0a12"));
+    ctx.fillStyle = `rgba(${rgb},0.22)`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     if (scene) {
-      scene.render(
-        { width: canvas.width, height: canvas.height, ctx },
-        features,
-        params,
-        dt
-      );
-    } else {
-      ctx.fillStyle = "#ff6b35";
-      ctx.font = "16px sans-serif";
-      ctx.fillText(`Scene "${currentSceneId}" not found`, 20, 40);
+      scene.render({ width: canvas.width, height: canvas.height, ctx }, features, params, dt);
     }
-
     rafId = requestAnimationFrame(frame);
   }
 
@@ -136,80 +104,38 @@ export function createVisualEngine(
       lastTime = performance.now();
       rafId = requestAnimationFrame(frame);
     },
-
     stop() {
       isPlaying = false;
-      if (rafId != null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
+      if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
     },
-
     setFeatures(features: AudioFeatures) {
       lastFeatures = features;
       if (features.onset || features.beatPulse > 0.5) {
         beatPulseDecay = Math.max(beatPulseDecay, features.beatPulse || 1);
       }
     },
-
     setScene(sceneId: string) {
       const next = sceneRegistry.get(sceneId);
-      if (!next) {
-        console.warn(`[visualz] Scene "${sceneId}" not found`);
-        return;
-      }
-      const prev = sceneRegistry.get(currentSceneId);
-      prev?.onExit?.();
+      if (!next) return;
+      sceneRegistry.get(currentSceneId)?.onExit?.();
       currentSceneId = sceneId;
       params = { ...next.defaultParams, ...params };
-      next.onEnter?.({
-        width: canvas.width,
-        height: canvas.height,
-        ctx,
-      }, params);
+      next.onEnter?.({ width: canvas.width, height: canvas.height, ctx }, params);
     },
-
-    setParams(partial: Partial<SceneParams>) {
-      params = { ...params, ...partial };
-    },
-
+    setParams(partial: Partial<SceneParams>) { params = { ...params, ...partial }; },
     listScenes() {
-      return Array.from(sceneRegistry.values()).map((s) => ({
-        id: s.id,
-        name: s.name,
-        description: s.description,
-      }));
+      return Array.from(sceneRegistry.values()).map((s) => ({ id: s.id, name: s.name, description: s.description }));
     },
-
-    resize(width: number, height: number) {
-      canvas.width = width;
-      canvas.height = height;
-    },
-
+    resize(width: number, height: number) { canvas.width = width; canvas.height = height; },
     getState(): VisualState {
-      return {
-        currentSceneId,
-        params: { ...params },
-        isPlaying,
-        width: canvas.width,
-        height: canvas.height,
-      };
+      return { currentSceneId, params: { ...params }, isPlaying, width: canvas.width, height: canvas.height };
     },
-
     async captureFrame(): Promise<Blob> {
       return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error("toBlob failed"));
-        }, "image/png");
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("toBlob failed")), "image/png");
       });
     },
-
-    destroy() {
-      this.stop();
-      const prev = sceneRegistry.get(currentSceneId);
-      prev?.onExit?.();
-    },
+    destroy() { this.stop(); sceneRegistry.get(currentSceneId)?.onExit?.(); },
   };
 }
 
