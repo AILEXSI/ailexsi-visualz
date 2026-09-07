@@ -1,7 +1,7 @@
 /**
  * AILEXSI Visualz — Public API
  * Version: 0.3.0-cinematic
- * Scene: Canvas2D. Post: WebGL2 multi-scale bloom + feedback + tonemap.
+ * Scene: Canvas2D Hero + optional GPU filaments → same WebGL2 post.
  */
 
 import type {
@@ -76,6 +76,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     chroma: 0.45,
     grain: 0.04,
     vignette: 0.35,
+    gpuFilaments: true,
     ...(initialScene?.defaultParams ?? {}),
     ...options.initialParams,
   };
@@ -127,6 +128,13 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
           energy: features.rms * 0.5 + features.bass * 0.5,
           dt,
         }),
+        gpuFilaments: params.gpuFilaments !== false,
+        songTimeMs: features.timeMs,
+        kick,
+        bass: features.bass,
+        drop: features.drop ?? 0,
+        trackSeed: typeof params.trackSeed === "number" ? params.trackSeed : 19770822,
+        filamentCount: typeof params.filamentCount === "number" ? params.filamentCount : 24,
       }, clock);
     } else {
       applyBloom(ctx, display, bloomAmt);
@@ -193,3 +201,5 @@ export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";
 export { stepFeedback, createFeedbackState } from "./gl/feedback";
 export { chooseHdrFormat } from "./gl/hdr";
+export { filamentParams, filamentParamsBatch } from "./gl/filament-state";
+export { createFilamentPass } from "./gl/filaments";
