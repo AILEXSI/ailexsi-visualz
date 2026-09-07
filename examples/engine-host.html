@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>AILEXSI Visualz — engine host</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #07070c; font: 14px/1.4 ui-sans-serif, system-ui; color: #eee; }
+    #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #hud { position: fixed; left: 16px; bottom: 16px; z-index: 2; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: rgba(8,8,14,.72); padding: 10px 12px; border-radius: 12px; }
+    button, select, label { background: #161622; color: #fff; border: 1px solid #2a2a3a; border-radius: 8px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="hud">
+  <label>Track <input id="file" type="file" accept="audio/*" /></label>
+  <button id="play">Play</button>
+  <select id="scene"></select>
+  <span id="info">build first: npm run build — then serve repo root</span>
+</div>
+<script type="module">
+import { createVisualEngine } from "../dist/index.js";
+import { createFeatureExtractor } from "../dist/audio/feature-extractor.js";
+const canvas = document.getElementById("stage");
+const file = document.getElementById("file");
+const playBtn = document.getElementById("play");
+const sceneSel = document.getElementById("scene");
+const info = document.getElementById("info");
+function fit() {
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = Math.floor(innerWidth * dpr);
+  canvas.height = Math.floor(innerHeight * dpr);
+  engine?.resize(canvas.width, canvas.height);
+}
+const engine = createVisualEngine({ canvas, initialSceneId: "resonance-wave" });
+engine.listScenes().forEach((s) => {
+  const o = document.createElement("option");
+  o.value = s.id; o.textContent = s.name;
+  if (s.id === "resonance-wave") o.selected = true;
+  sceneSel.appendChild(o);
+});
+sceneSel.onchange = () => engine.setScene(sceneSel.value);
+addEventListener("resize", fit); fit();
+engine.start();
+let audioCtx, audio, extractor, raf;
+function tick() {
+  raf = requestAnimationFrame(tick);
+  if (extractor) engine.setFeatures(extractor.sample(audio ? audio.currentTime * 1000 : 0));
+}
+tick();
+async function hook(f) {
+  audio?.pause(); extractor?.disconnect(); audioCtx?.close();
+  audioCtx = new AudioContext();
+  audio = new Audio(); audio.src = URL.createObjectURL(f); audio.loop = true;
+  const src = audioCtx.createMediaElementSource(audio);
+  extractor = createFeatureExtractor(audioCtx, src);
+  src.connect(audioCtx.destination);
+  info.textContent = f.name;
+}
+file.onchange = () => { const f = file.files?.[0]; if (f) hook(f); };
+playBtn.onclick = async () => {
+  if (!audio) { info.textContent = "Erst Datei"; return; }
+  if (audioCtx.state === "suspended") await audioCtx.resume();
+  if (audio.paused) { await audio.play(); playBtn.textContent = "Pause"; }
+  else { audio.pause(); playBtn.textContent = "Play"; }
+};
+</script>
+</body>
+</html>

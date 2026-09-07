@@ -1,7 +1,7 @@
 {
   "name": "@ailexsi/visualz",
-  "version": "0.1.0-blueprint",
-  "description": "AILEXSI Visualz — local-first audio-reactive visualizer engine from scratch. No AGPL dependencies.",
+  "version": "0.3.0-cinematic",
+  "description": "AILEXSI Visualz — cinematic audio-reactive engine. Resonance Hero is the gold standard.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,14 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "keywords": [
-    "ailexsi",
-    "visualizer",
-    "audio-reactive",
-    "web-audio",
-    "canvas",
-    "local-first"
-  ],
+  "keywords": ["ailexsi", "visualizer", "audio-reactive", "webgl", "local-first"],
   "author": "AILEXSI",
   "license": "UNLICENSED",
   "private": true,
@@ -25,7 +18,5 @@
     "typescript": "^5.6.3",
     "vitest": "^2.1.4"
   },
-  "engines": {
-    "node": ">=20"
-  }
+  "engines": { "node": ">=20" }
 }
