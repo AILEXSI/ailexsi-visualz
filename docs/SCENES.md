@@ -5,20 +5,21 @@ Approved against test track `bubu3` (offline hero pass).
 ## resonance-wave — LOCKED (hero)
 
 Do not regress:
-- motion only via `musicClock` / song energy
-- filaments = stacked strokes (wide dim halo, mid body, thin hot core)
-- soft blur on the stroke layer before bloom
-- spectrum smoothed across bins (no stair)
-- white-hot core + harmonic rings on kick
+- motion only via song energy
+- filaments = stacked strokes (halo, body, hot core)
+- soft blur on stroke layer before bloom
+- spectrum smoothed across bins
+- white-hot core + rings on kick
 - silence freezes phase
 
-Reference still: chat hero-wave 2026-09-07.
+## spectrum-bars — LOCKED (hero light + axis)
 
-## spectrum-bars — in progress (match hero light)
+Viewer: **left = bass (warm), right = highs (cyan)**.
+Kick lifts the left third only. Right gated by treble, not broadband energy.
+Halo capsule + body + inner highlight + reflection + bloom.
 
-Same light grammar: halo capsule + body + inner highlight + reflection + bloom.
-Log mapping, not 48 equal blocks.
+Possible leftover left spikes without audible bass: check speakers/FFT floor before remapping.
 
-## lita-bloom — in progress
+## lita-bloom — in progress (hero light)
 
-Teardrop petals, veins, kick-dust. Same bloom/core grammar. Not the moodboard photograph.
+Teardrop petals, veins, kick-dust, petal halo. Same bloom/core grammar.
