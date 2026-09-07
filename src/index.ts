@@ -1,8 +1,7 @@
 /**
  * AILEXSI Visualz — Public API
- * Version: 0.2.0-glpost
- *
- * 2D scenes + WebGL2 bloom/chroma/grain. Fallback: canvas bloom.
+ * Version: 0.3.0-cinematic
+ * Scene: Canvas2D. Post: WebGL2 multi-scale bloom + feedback + tonemap.
  */
 
 import type {
@@ -106,19 +105,21 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     };
     const scene = sceneRegistry.get(currentSceneId);
     const rgb = hexToRgb(String(params.colorSecondary || "#0a0a12"));
-    ctx.fillStyle = `rgba(${rgb},0.18)`;
+    ctx.fillStyle = `rgba(${rgb},0.22)`;
     ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
     if (scene) {
       scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, dt);
     }
     const bloomBase = typeof params.bloom === "number" ? params.bloom : 0.8;
     const bloomAmt = bloomBase * (0.5 + features.rms * 0.35 + features.beatPulse * 0.4);
+    const kick = features.kick ?? features.beatPulse;
     if (post) {
       post.composite(sceneCanvas, {
-        bloom: bloomAmt * 1.35,
-        chroma: (typeof params.chroma === "number" ? params.chroma : 0.4) * (0.4 + features.treble),
-        grain: typeof params.grain === "number" ? params.grain : 0.035,
+        bloom: bloomAmt * 1.2,
+        chroma: (typeof params.chroma === "number" ? params.chroma : 0.4) * (0.35 + features.treble),
+        grain: typeof params.grain === "number" ? params.grain : 0.03,
         vignette: typeof params.vignette === "number" ? params.vignette : 0.32,
+        feedback: 0.22 + kick * 0.18 + (features.drop ?? 0) * 0.12,
       }, clock);
     } else {
       applyBloom(ctx, display, bloomAmt);
@@ -181,3 +182,4 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 export * from "./types";
 export { builtinScenes } from "./scenes";
 export { createGlPost } from "./gl/post-pipeline";
+export { bloomMips } from "./gl/mip";
