@@ -1,9 +1,12 @@
 /**
- * WebGL2 post: extract → 4-level bloom → feedback trails → tonemap.
- * Scene remains Canvas2D; this stage is the cinematic layer that actually exists.
+ * WebGL2 post:
+ * extract → 4-level weighted bloom → feedback trails → tonemap.
+ * Scene remains Canvas2D. This is the cinematic layer that exists.
  */
 
 import { bloomMips } from "./mip";
+import { BLOOM_WEIGHTS, bloomThreshold } from "./bloom-config";
+import { chooseHdrFormat, framebufferIsComplete, type HdrFormat } from "./hdr";
 
 const VERT = `#version 300 es
 in vec2 a_pos;
@@ -43,23 +46,14 @@ void main() {
   o = vec4(c, 1.0);
 }`;
 
-const DOWN = `#version 300 es
+const COPY_W = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_src;
-void main() { o = texture(u_src, v_uv); }`;
-
-const UPADD = `#version 300 es
-precision highp float;
-in vec2 v_uv;
-out vec4 o;
-uniform sampler2D u_low;
-uniform sampler2D u_high;
-uniform float u_wLow;
-uniform float u_wHigh;
+uniform float u_weight;
 void main() {
-  o = vec4(texture(u_low, v_uv).rgb * u_wLow + texture(u_high, v_uv).rgb * u_wHigh, 1.0);
+  o = vec4(texture(u_src, v_uv).rgb * u_weight, 1.0);
 }`;
 
 const COMBINE = `#version 300 es
@@ -80,7 +74,7 @@ float hash(vec2 p) {
 }
 void main() {
   vec2 uv = v_uv;
-  vec2 off = (uv - 0.5) * u_chroma * 0.012;
+  vec2 off = (uv - 0.5) * u_chroma * 0.010;
   vec3 base;
   base.r = texture(u_src, uv + off).r;
   base.g = texture(u_src, uv).g;
@@ -88,14 +82,15 @@ void main() {
   vec3 bloom = texture(u_bloom, uv).rgb;
   vec3 prev = texture(u_prev, uv).rgb;
   vec3 col = base + bloom * u_bloomAmt;
-  col = mix(col, max(col, prev * 0.96), u_feedback);
+  float fb = clamp(u_feedback, 0.0, 0.55);
+  col = mix(col, max(col, prev * 0.94), fb);
   float g = (hash(uv * vec2(1920.0, 1080.0) + floor(u_time * 24.0)) - 0.5) * u_grain;
   col += g;
   float v = 1.0 - u_vignette * pow(length(uv - 0.5) * 1.45, 2.2);
   col *= v;
   col = col / (col + vec3(1.0));
   col = pow(max(col, 0.0), vec3(0.92));
-  o = vec4(col, 1.0);
+  o = vec4(clamp(col, 0.0, 1.0), 1.0);
 }`;
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string) {
@@ -130,7 +125,12 @@ function program(gl: WebGL2RenderingContext, fs: string) {
 
 type Target = { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number };
 
-function makeTarget(gl: WebGL2RenderingContext, w: number, h: number): Target {
+function makeTarget(
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number,
+  fmt: HdrFormat
+): Target {
   const tex = gl.createTexture();
   const fbo = gl.createFramebuffer();
   if (!tex || !fbo) throw new Error("fbo alloc");
@@ -139,9 +139,14 @@ function makeTarget(gl: WebGL2RenderingContext, w: number, h: number): Target {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, fmt.internalFormat, w, h, 0, fmt.format, fmt.type, null);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if (!framebufferIsComplete(gl)) {
+    gl.deleteTexture(tex);
+    gl.deleteFramebuffer(fbo);
+    throw new Error("framebuffer incomplete");
+  }
   return { tex, fbo, w, h };
 }
 
@@ -158,16 +163,44 @@ export type PostControls = {
   feedback?: number;
 };
 
-export function createGlPost(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
+export type GlPost = {
+  resize(nw: number, nh: number): void;
+  composite(srcCanvas: HTMLCanvasElement, controls: PostControls, timeSec: number): void;
+  destroy(): void;
+  capabilities(): { hdr: boolean; label: HdrFormat["label"] };
+};
+
+export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
+  const gl = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: false,
+    premultipliedAlpha: false,
+  });
   if (!gl) return null;
 
-  let extractP: WebGLProgram, blurP: WebGLProgram, downP: WebGLProgram, upP: WebGLProgram, combineP: WebGLProgram;
+  let chosen = chooseHdrFormat(gl);
+  if (chosen.hdr) {
+    try {
+      const probe = makeTarget(gl, 4, 4, chosen);
+      kill(gl, probe);
+    } catch {
+      chosen = chooseHdrFormat({
+        getExtension: () => null,
+        RGBA: gl.RGBA,
+        RGBA8: gl.RGBA8,
+        UNSIGNED_BYTE: gl.UNSIGNED_BYTE,
+      });
+    }
+  }
+
+  let extractP: WebGLProgram;
+  let blurP: WebGLProgram;
+  let copyP: WebGLProgram;
+  let combineP: WebGLProgram;
   try {
     extractP = program(gl, EXTRACT);
     blurP = program(gl, BLUR);
-    downP = program(gl, DOWN);
-    upP = program(gl, UPADD);
+    copyP = program(gl, COPY_W);
     combineP = program(gl, COMBINE);
   } catch {
     return null;
@@ -188,14 +221,39 @@ export function createGlPost(canvas: HTMLCanvasElement) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+  const locExtract = {
+    src: gl.getUniformLocation(extractP, "u_src"),
+    thresh: gl.getUniformLocation(extractP, "u_thresh"),
+  };
+  const locBlur = {
+    src: gl.getUniformLocation(blurP, "u_src"),
+    dir: gl.getUniformLocation(blurP, "u_dir"),
+    texel: gl.getUniformLocation(blurP, "u_texel"),
+  };
+  const locCopy = {
+    src: gl.getUniformLocation(copyP, "u_src"),
+    weight: gl.getUniformLocation(copyP, "u_weight"),
+  };
+  const locCombine = {
+    src: gl.getUniformLocation(combineP, "u_src"),
+    bloom: gl.getUniformLocation(combineP, "u_bloom"),
+    prev: gl.getUniformLocation(combineP, "u_prev"),
+    bloomAmt: gl.getUniformLocation(combineP, "u_bloomAmt"),
+    feedback: gl.getUniformLocation(combineP, "u_feedback"),
+    chroma: gl.getUniformLocation(combineP, "u_chroma"),
+    grain: gl.getUniformLocation(combineP, "u_grain"),
+    time: gl.getUniformLocation(combineP, "u_time"),
+    vig: gl.getUniformLocation(combineP, "u_vignette"),
+  };
+
   let w = Math.max(2, canvas.width);
   let h = Math.max(2, canvas.height);
   let levels: Target[] = [];
   let ping: Target[] = [];
   let pong: Target[] = [];
-  let bloomFull = makeTarget(gl, w, h);
-  let feedbackA = makeTarget(gl, w, h);
-  let feedbackB = makeTarget(gl, w, h);
+  let bloomFull!: Target;
+  let feedbackA!: Target;
+  let feedbackB!: Target;
   let fbFlip = false;
 
   function allocLevels() {
@@ -203,13 +261,15 @@ export function createGlPost(canvas: HTMLCanvasElement) {
     levels.forEach((t) => kill(gl, t));
     ping.forEach((t) => kill(gl, t));
     pong.forEach((t) => kill(gl, t));
-    levels = mips.map((m) => makeTarget(gl, m.w, m.h));
-    ping = mips.map((m) => makeTarget(gl, m.w, m.h));
-    pong = mips.map((m) => makeTarget(gl, m.w, m.h));
-    kill(gl, bloomFull); kill(gl, feedbackA); kill(gl, feedbackB);
-    bloomFull = makeTarget(gl, w, h);
-    feedbackA = makeTarget(gl, w, h);
-    feedbackB = makeTarget(gl, w, h);
+    if (bloomFull) kill(gl, bloomFull);
+    if (feedbackA) kill(gl, feedbackA);
+    if (feedbackB) kill(gl, feedbackB);
+    levels = mips.map((m) => makeTarget(gl, m.w, m.h, chosen));
+    ping = mips.map((m) => makeTarget(gl, m.w, m.h, chosen));
+    pong = mips.map((m) => makeTarget(gl, m.w, m.h, chosen));
+    bloomFull = makeTarget(gl, w, h, chosen);
+    feedbackA = makeTarget(gl, w, h, chosen);
+    feedbackB = makeTarget(gl, w, h, chosen);
   }
   allocLevels();
 
@@ -222,20 +282,23 @@ export function createGlPost(canvas: HTMLCanvasElement) {
     const t = levels[i];
     gl.viewport(0, 0, t.w, t.h);
     gl.useProgram(blurP);
-    gl.uniform1i(gl.getUniformLocation(blurP, "u_src"), 0);
-    gl.uniform2f(gl.getUniformLocation(blurP, "u_texel"), 1 / t.w, 1 / t.h);
+    gl.uniform1i(locBlur.src, 0);
+    gl.uniform2f(locBlur.texel, 1 / t.w, 1 / t.h);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, ping[i].fbo);
     gl.bindTexture(gl.TEXTURE_2D, src);
-    gl.uniform2f(gl.getUniformLocation(blurP, "u_dir"), 1, 0);
+    gl.uniform2f(locBlur.dir, 1, 0);
     drawQuad();
     gl.bindFramebuffer(gl.FRAMEBUFFER, pong[i].fbo);
     gl.bindTexture(gl.TEXTURE_2D, ping[i].tex);
-    gl.uniform2f(gl.getUniformLocation(blurP, "u_dir"), 0, 1);
+    gl.uniform2f(locBlur.dir, 0, 1);
     drawQuad();
   }
 
   return {
+    capabilities() {
+      return { hdr: chosen.hdr, label: chosen.label };
+    },
     resize(nw: number, nh: number) {
       canvas.width = nw;
       canvas.height = nh;
@@ -245,8 +308,8 @@ export function createGlPost(canvas: HTMLCanvasElement) {
     },
     composite(srcCanvas: HTMLCanvasElement, controls: PostControls, timeSec: number) {
       if (srcCanvas.width !== w || srcCanvas.height !== h) {
-        w = srcCanvas.width;
-        h = srcCanvas.height;
+        w = Math.max(2, srcCanvas.width);
+        h = Math.max(2, srcCanvas.height);
         canvas.width = w;
         canvas.height = h;
         allocLevels();
@@ -260,13 +323,14 @@ export function createGlPost(canvas: HTMLCanvasElement) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, levels[0].fbo);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, srcTex);
-      gl.uniform1i(gl.getUniformLocation(extractP, "u_src"), 0);
-      gl.uniform1f(gl.getUniformLocation(extractP, "u_thresh"), 0.4);
+      gl.uniform1i(locExtract.src, 0);
+      gl.uniform1f(locExtract.thresh, bloomThreshold());
       drawQuad();
       blurLevel(0, levels[0].tex);
 
-      gl.useProgram(downP);
-      gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
+      gl.useProgram(copyP);
+      gl.uniform1i(locCopy.src, 0);
+      gl.uniform1f(locCopy.weight, 1);
       for (let i = 1; i < levels.length; i++) {
         gl.viewport(0, 0, levels[i].w, levels[i].h);
         gl.bindFramebuffer(gl.FRAMEBUFFER, levels[i].fbo);
@@ -275,24 +339,20 @@ export function createGlPost(canvas: HTMLCanvasElement) {
         blurLevel(i, levels[i].tex);
       }
 
-      // upsample add into bloomFull: start from coarsest
-      const weights = [0.45, 0.3, 0.16, 0.09];
-      gl.useProgram(upP);
       gl.bindFramebuffer(gl.FRAMEBUFFER, bloomFull.fbo);
       gl.viewport(0, 0, w, h);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE);
-      gl.useProgram(downP);
+      gl.useProgram(copyP);
+      gl.uniform1i(locCopy.src, 0);
       for (let i = 0; i < pong.length; i++) {
-        gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
+        gl.uniform1f(locCopy.weight, BLOOM_WEIGHTS[i] ?? 0);
         gl.bindTexture(gl.TEXTURE_2D, pong[i].tex);
-        // weight via blend color is awkward; draw at full and accept equal add then scale in combine
         drawQuad();
       }
       gl.disable(gl.BLEND);
-      void weights;
 
       const prev = fbFlip ? feedbackA : feedbackB;
       const next = fbFlip ? feedbackB : feedbackA;
@@ -301,27 +361,28 @@ export function createGlPost(canvas: HTMLCanvasElement) {
       gl.useProgram(combineP);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, srcTex);
-      gl.uniform1i(gl.getUniformLocation(combineP, "u_src"), 0);
+      gl.uniform1i(locCombine.src, 0);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, bloomFull.tex);
-      gl.uniform1i(gl.getUniformLocation(combineP, "u_bloom"), 1);
+      gl.uniform1i(locCombine.bloom, 1);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, prev.tex);
-      gl.uniform1i(gl.getUniformLocation(combineP, "u_prev"), 2);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_bloomAmt"), controls.bloom);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_feedback"), controls.feedback ?? 0.35);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_chroma"), controls.chroma);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_grain"), controls.grain);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_time"), timeSec);
-      gl.uniform1f(gl.getUniformLocation(combineP, "u_vignette"), controls.vignette);
+      gl.uniform1i(locCombine.prev, 2);
+      gl.uniform1f(locCombine.bloomAmt, controls.bloom);
+      gl.uniform1f(locCombine.feedback, Math.max(0, Math.min(0.55, controls.feedback ?? 0.16)));
+      gl.uniform1f(locCombine.chroma, controls.chroma);
+      gl.uniform1f(locCombine.grain, controls.grain);
+      gl.uniform1f(locCombine.time, timeSec);
+      gl.uniform1f(locCombine.vig, controls.vignette);
       drawQuad();
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.useProgram(downP);
+      gl.useProgram(copyP);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, next.tex);
-      gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
+      gl.uniform1i(locCopy.src, 0);
+      gl.uniform1f(locCopy.weight, 1);
       drawQuad();
       fbFlip = !fbFlip;
     },
@@ -334,8 +395,7 @@ export function createGlPost(canvas: HTMLCanvasElement) {
       kill(gl, feedbackB);
       gl.deleteProgram(extractP);
       gl.deleteProgram(blurP);
-      gl.deleteProgram(downP);
-      gl.deleteProgram(upP);
+      gl.deleteProgram(copyP);
       gl.deleteProgram(combineP);
     },
   };
