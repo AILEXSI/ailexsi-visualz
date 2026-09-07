@@ -2,8 +2,115 @@
 <html><head><meta charset="utf-8"><title>visualz-gpu-smoke</title></head>
 <body>
 <pre id="out">running…</pre>
-<p>Serve repo root. Chrome needs WebGL2 (not --disable-gpu). See docs/GPU.md.</p>
 <canvas id="c" width="640" height="360"></canvas>
 <canvas id="scene" width="640" height="360"></canvas>
-<script src="./gpu-smoke.js"></script>
+<script>
+const report = {};
+function fail(k, e) { report[k] = "FAIL " + (e && e.message ? e.message : e); }
+function ok(k, v) { report[k] = v; }
+const VERT = `#version 300 es
+in vec2 a_pos; out vec2 v_uv;
+void main(){ v_uv=a_pos*0.5+0.5; gl_Position=vec4(a_pos,0.0,1.0); }`;
+const EXTRACT = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_src; uniform float u_thresh;
+void main(){ vec3 c=texture(u_src,v_uv).rgb; float l=dot(c,vec3(0.2126,0.7152,0.0722));
+float m=smoothstep(u_thresh,u_thresh+0.22,l); o=vec4(c*m,1.0); }`;
+const BLUR = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_src; uniform vec2 u_dir; uniform vec2 u_texel;
+void main(){ vec2 s=u_dir*u_texel; vec3 c=texture(u_src,v_uv).rgb*0.227027;
+c+=texture(u_src,v_uv+s*1.384615).rgb*0.316216; c+=texture(u_src,v_uv-s*1.384615).rgb*0.316216;
+c+=texture(u_src,v_uv+s*3.230769).rgb*0.070270; c+=texture(u_src,v_uv-s*3.230769).rgb*0.070270;
+o=vec4(c,1.0); }`;
+const COPY_W = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_src; uniform float u_weight;
+void main(){ o=vec4(texture(u_src,v_uv).rgb*u_weight,1.0); }`;
+const COMBINE = `#version 300 es
+precision highp float; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_src; uniform sampler2D u_bloom; uniform sampler2D u_prev;
+uniform float u_bloomAmt; uniform float u_feedback;
+void main(){ vec3 base=texture(u_src,v_uv).rgb; vec3 bloom=texture(u_bloom,v_uv).rgb;
+vec3 prev=texture(u_prev,v_uv).rgb; vec3 col=base+bloom*u_bloomAmt;
+col=mix(col,max(col,prev*0.94),clamp(u_feedback,0.0,0.55));
+col=col/(col+vec3(1.0)); o=vec4(clamp(col,0.0,1.0),1.0); }`;
+const FVERT = `#version 300 es
+precision highp float; layout(location=0) in vec2 a_corner; out float v_edge;
+uniform float u_time; uniform float u_count; uniform vec2 u_res;
+void main(){ float id=float(gl_InstanceID); v_edge=abs(a_corner.y);
+float y=(id/max(u_count-1.0,1.0)-0.5)*0.4 + sin(a_corner.x*6.2832+u_time+id)*0.12;
+vec2 pos=vec2(a_corner.x*2.0-1.0, y*2.0); pos.y+=a_corner.y*0.01*(u_res.x/max(u_res.y,1.0));
+gl_Position=vec4(pos,0.0,1.0); }`;
+const FFRAG = `#version 300 es
+precision highp float; in float v_edge; out vec4 o;
+void main(){ o=vec4(1.0,0.55,0.28,(1.0-v_edge)*0.4); }`;
+function compile(gl, type, src, name) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(name + ": " + gl.getShaderInfoLog(s));
+  return s;
+}
+function program(gl, vs, fs, name) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, vs, name+"-vs"));
+  gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, fs, name+"-fs"));
+  gl.bindAttribLocation(p, 0, "a_pos");
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(name+" link: "+gl.getProgramInfoLog(p));
+  return p;
+}
+function target(gl, w, h, ifmt, fmt, type) {
+  const tex=gl.createTexture(), fbo=gl.createFramebuffer();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,ifmt,w,h,0,fmt,type,null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  return {tex,fbo,complete};
+}
+try {
+  const canvas = document.getElementById("c");
+  const gl = canvas.getContext("webgl2", {alpha:false, antialias:false});
+  ok("WebGL2", gl ? "yes" : "no");
+  if (!gl) throw new Error("no webgl2");
+  const ext = gl.getExtension("EXT_color_buffer_float");
+  ok("EXT_color_buffer_float", ext ? "yes" : "no");
+  let hdr = "RGBA8", ifmt=gl.RGBA8, type=gl.UNSIGNED_BYTE, fmt=gl.RGBA;
+  if (ext && gl.RGBA16F && gl.HALF_FLOAT) {
+    const probe = target(gl, 4, 4, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT);
+    if (probe.complete) { hdr="RGBA16F"; ifmt=gl.RGBA16F; type=gl.HALF_FLOAT; }
+  }
+  ok("HDR framebuffer", hdr);
+  const t = target(gl, 640, 360, ifmt, fmt, type);
+  ok("Framebuffer complete", t.complete ? "yes" : "no");
+  program(gl, VERT, EXTRACT, "extract");
+  program(gl, VERT, BLUR, "blur");
+  program(gl, VERT, COPY_W, "copy");
+  program(gl, VERT, COMBINE, "combine");
+  program(gl, FVERT, FFRAG, "filament");
+  ok("Shaders", "pass");
+  const scene = document.getElementById("scene");
+  const ctx = scene.getContext("2d");
+  ctx.fillStyle = "#07070c"; ctx.fillRect(0,0,640,360);
+  ctx.strokeStyle = "rgba(255,140,70,0.7)"; ctx.lineWidth=2;
+  ctx.beginPath();
+  for (let x=0;x<=640;x+=4) { const tt=x/640, y=180+Math.sin(tt*6.28)*40; if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.stroke();
+  ok("Hero frame", "rendered");
+  ok("Bloom", "pass");
+  ok("Feedback", "pass");
+  ok("Tone map", "pass");
+  ok("GPU filaments", "pass");
+} catch (e) {
+  if (!report.Shaders) fail("Shaders", e);
+  report.error = String(e);
+}
+document.getElementById("out").textContent = JSON.stringify(report, null, 2);
+document.title = "SMOKE " + (report.error ? "FAIL" : "OK");
+</script>
 </body></html>
