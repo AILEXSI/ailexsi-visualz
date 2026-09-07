@@ -1,7 +1,4 @@
-/**
- * Web Audio feature extractor — song-locked.
- * Onset via spectral flux. Bands via log-ish splits.
- */
+/** Web Audio extractor — flux per band + kick/snare/hat/vocal/build/drop. */
 
 import type { AudioFeatures, AudioAnalyserConfig } from "../types";
 
@@ -20,71 +17,60 @@ export function createFeatureExtractor(
   analyser.smoothingTimeConstant = config.smoothingTimeConstant ?? 0.55;
   if (config.minDecibels != null) analyser.minDecibels = config.minDecibels;
   if (config.maxDecibels != null) analyser.maxDecibels = config.maxDecibels;
-
   sourceNode.connect(analyser);
 
-  const freqBinCount = analyser.frequencyBinCount;
-  const freqData = new Uint8Array(freqBinCount);
+  const n = analyser.frequencyBinCount;
+  const freqData = new Uint8Array(n);
   const timeData = new Uint8Array(analyser.fftSize);
-  const spectrum = new Float32Array(freqBinCount);
-  const prevSpectrum = new Float32Array(freqBinCount);
+  const spectrum = new Float32Array(n);
+  const prev = new Float32Array(n);
 
-  let beatPulse = 0;
-  let lastOnsetTime = 0;
-  let fluxEma = 0;
+  let kick = 0, snare = 0, hat = 0, vocal = 0, rise = 0, prevE = 0;
+  let lastKick = 0;
+
+  const avg = (a: number, b: number) => {
+    let s = 0;
+    const end = Math.min(n, b);
+    for (let i = a; i < end; i++) s += spectrum[i];
+    return s / Math.max(1, end - a);
+  };
 
   return {
     sample(timeMs = performance.now()) {
       analyser.getByteFrequencyData(freqData);
       analyser.getByteTimeDomainData(timeData);
-
-      let sumSq = 0;
+      let ss = 0;
       for (let i = 0; i < timeData.length; i++) {
         const v = (timeData[i] - 128) / 128;
-        sumSq += v * v;
+        ss += v * v;
       }
-      const rms = Math.min(1, Math.sqrt(sumSq / timeData.length) * 2.2);
-
-      for (let i = 0; i < freqBinCount; i++) {
+      const rms = Math.min(1, Math.sqrt(ss / timeData.length) * 2.2);
+      let fluxB = 0, fluxM = 0, fluxH = 0;
+      for (let i = 0; i < n; i++) {
         spectrum[i] = freqData[i] / 255;
+        const d = Math.max(0, spectrum[i] - prev[i]);
+        if (i < n * 0.06) fluxB += d;
+        else if (i < n * 0.28) fluxM += d;
+        else fluxH += d;
+        prev[i] = spectrum[i];
       }
-
-      let flux = 0;
-      for (let i = 0; i < freqBinCount; i++) {
-        const d = spectrum[i] - prevSpectrum[i];
-        if (d > 0) flux += d;
-        prevSpectrum[i] = spectrum[i];
-      }
-      flux /= freqBinCount;
-      fluxEma = fluxEma * 0.88 + flux * 0.12;
-
-      const avg = (start: number, end: number) => {
-        let s = 0;
-        const n = Math.max(1, end - start);
-        for (let i = start; i < end; i++) s += spectrum[i];
-        return s / n;
-      };
-      const bass = avg(0, Math.max(2, Math.floor(freqBinCount * 0.06)));
-      const mid = avg(
-        Math.floor(freqBinCount * 0.06),
-        Math.floor(freqBinCount * 0.28)
-      );
-      const treble = avg(Math.floor(freqBinCount * 0.28), freqBinCount);
-
+      const bass = avg(0, Math.floor(n * 0.06));
+      const mid = avg(Math.floor(n * 0.06), Math.floor(n * 0.28));
+      const treble = avg(Math.floor(n * 0.28), n);
       const silent = rms < 0.02 && bass < 0.03;
-      const onset =
-        !silent &&
-        flux > fluxEma * 1.8 + 0.018 &&
-        timeMs - lastOnsetTime > 110;
-
-      if (onset) {
-        lastOnsetTime = timeMs;
-        beatPulse = 1;
-      } else {
-        const decay = silent ? 0.18 : 0.06 + (1 - rms) * 0.05;
-        beatPulse = Math.max(0, beatPulse - decay);
-      }
-
+      const kickHit = !silent && fluxB > 0.35 && bass > 0.16 && timeMs - lastKick > 100;
+      const snareHit = !silent && fluxM > 0.4 && mid > 0.14 && bass < 0.55;
+      const hatHit = !silent && (fluxH > 0.25 || treble > 0.22);
+      if (kickHit) { lastKick = timeMs; kick = 1; } else kick = Math.max(0, kick - 0.08);
+      snare = snareHit ? 1 : Math.max(0, snare - 0.12);
+      hat = Math.min(1, hat * 0.72 + (hatHit ? 0.5 : 0));
+      vocal = vocal * 0.88 + mid * 0.12 * (1 - bass * 0.35);
+      const energy = rms * 0.45 + bass * 0.4 + mid * 0.15;
+      const de = energy - prevE;
+      rise = Math.max(0, rise * 0.92 + de * 4);
+      const buildup = rise > 0.12 ? Math.min(1, rise * 1.2) : 0;
+      const drop = rise > 0.25 && de > 0.08 && bass > 0.28 ? 1 : 0;
+      prevE = energy * 0.5 + prevE * 0.5;
       return {
         timeMs,
         rms: silent ? 0 : rms,
@@ -92,18 +78,19 @@ export function createFeatureExtractor(
         mid: silent ? 0 : mid,
         treble: silent ? 0 : treble,
         spectrum: spectrum.slice(),
-        onset,
-        beatPulse: silent ? 0 : beatPulse,
+        onset: kickHit,
+        beatPulse: silent ? 0 : kick,
         tempoBpm: null,
+        kick: silent ? 0 : kick,
+        snare: silent ? 0 : snare,
+        hat: silent ? 0 : hat,
+        vocal: silent ? 0 : Math.min(1, vocal * 1.6),
+        buildup: silent ? 0 : buildup,
+        drop: silent ? 0 : drop,
       };
     },
-
     disconnect() {
-      try {
-        sourceNode.disconnect(analyser);
-      } catch {
-        /* already disconnected */
-      }
+      try { sourceNode.disconnect(analyser); } catch { /* */ }
     },
   };
 }
