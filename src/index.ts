@@ -1,6 +1,6 @@
 /**
  * AILEXSI Visualz — Public API
- * Version: 0.1.1-songlock
+ * Version: 0.1.2-bloom
  */
 
 import type {
@@ -11,6 +11,7 @@ import type {
   VisualState,
 } from "./types";
 import { builtinScenes } from "./scenes";
+import { applyBloom } from "./post/bloom";
 
 export interface VisualEngine {
   start(): void;
@@ -61,6 +62,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     colorSecondary: "#0a0a12",
     speed: 1,
     complexity: 0.55,
+    bloom: 0.6,
     ...(initialScene?.defaultParams ?? {}),
     ...options.initialParams,
   };
@@ -94,6 +96,10 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     if (scene) {
       scene.render({ width: canvas.width, height: canvas.height, ctx }, features, params, dt);
     }
+    const bloomAmt =
+      (typeof params.bloom === "number" ? params.bloom : 0.55) *
+      (0.45 + features.rms * 0.4 + features.beatPulse * 0.35);
+    applyBloom(ctx, canvas, bloomAmt);
     rafId = requestAnimationFrame(frame);
   }
 
