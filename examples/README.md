@@ -1,6 +1,8 @@
 # Examples
 
-Canonical: **`engine-host.html`** — `createVisualEngine` + feature extractor.
-Requires `npm run build` and a static server at repo root so `../dist/index.js` resolves.
+Canonical host: `engine-host.html` after `npm run build`.
 
-Deprecated: **`demo.html`** — old inline Canvas sketch. Not the engine. Do not use it as quality reference.
+GPU smoke: `gpu-smoke.html` — WebGL2 / HDR / bloom / feedback / filament compile+draw.
+See `docs/GPU.md`.
+
+Deprecated: `demo.html` inline sketch.
