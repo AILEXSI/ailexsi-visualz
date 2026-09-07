@@ -1,15 +1,16 @@
 /**
- * resonance-wave — physics pass
- * Ambient / mid / primary filaments + expanding kick rings + sun core.
+ * resonance-wave — physics pass / Resonance Hero gold standard
  */
 
 import type { Scene, SceneContext, SceneParams } from "../types";
 import type { AudioFeatures } from "../types";
 import { hexToRgba } from "../draw/color";
 import { musicClock, logSpectrumSample } from "../draw/motion";
+import { rand01, seedFrom } from "../draw/rng";
 
 let phase = 0;
 const rings: Array<{ r: number; life: number }> = [];
+const TRACK_SEED = 19770822;
 
 function sample(spec: Float32Array, t: number): number {
   const a = logSpectrumSample(spec, Math.max(0, t - 0.012));
@@ -98,10 +99,12 @@ export const resonanceWaveScene: Scene = {
     if (rings.length > 8) rings.splice(0, rings.length - 8);
 
     if (hat > 0.08) {
+      const n = Math.floor(16 + hat * 40);
       ctx.fillStyle = hexToRgba("#ffe6c8", 0.15 + hat * 0.35);
-      for (let i = 0; i < 16 + hat * 40; i++) {
-        const px = Math.random() * width;
-        const py = cy + (Math.random() - 0.5) * height * 0.5;
+      for (let i = 0; i < n; i++) {
+        const s = seedFrom(features.timeMs, TRACK_SEED, i);
+        const px = rand01(s) * width;
+        const py = cy + (rand01(s ^ 0x9e3779b9) - 0.5) * height * 0.5;
         ctx.fillRect(px, py, 1, 1);
       }
     }
