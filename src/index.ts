@@ -1,6 +1,8 @@
 /**
  * AILEXSI Visualz — Public API
- * Version: 0.1.2-bloom
+ * Version: 0.2.0-glpost
+ *
+ * 2D scenes + WebGL2 bloom/chroma/grain. Fallback: canvas bloom.
  */
 
 import type {
@@ -12,6 +14,7 @@ import type {
 } from "./types";
 import { builtinScenes } from "./scenes";
 import { applyBloom } from "./post/bloom";
+import { createGlPost } from "./gl/post-pipeline";
 
 export interface VisualEngine {
   start(): void;
@@ -48,21 +51,31 @@ function hexToRgb(hex: string): string {
 
 export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   ensureBuiltinsRegistered();
-  const canvas = options.canvas;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Could not get 2D context from canvas");
+
+  const display = options.canvas;
+  const sceneCanvas = document.createElement("canvas");
+  sceneCanvas.width = Math.max(2, display.width || 1280);
+  sceneCanvas.height = Math.max(2, display.height || 720);
+
+  const post = createGlPost(display);
+  const ctx = (post ? sceneCanvas : display).getContext("2d");
+  if (!ctx) throw new Error("Could not get 2D context");
+  const drawTarget = post ? sceneCanvas : display;
 
   let currentSceneId = options.initialSceneId ?? "resonance-wave";
   const initialScene = sceneRegistry.get(currentSceneId) ?? builtinScenes[0];
   if (initialScene) currentSceneId = initialScene.id;
 
   let params: SceneParams = {
-    intensity: 0.75,
+    intensity: 0.8,
     colorPrimary: "#ff6b35",
     colorSecondary: "#0a0a12",
     speed: 1,
-    complexity: 0.55,
-    bloom: 0.6,
+    complexity: 0.6,
+    bloom: 0.85,
+    chroma: 0.45,
+    grain: 0.04,
+    vignette: 0.35,
     ...(initialScene?.defaultParams ?? {}),
     ...options.initialParams,
   };
@@ -75,13 +88,15 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   };
   let lastTime = performance.now();
   let beatPulseDecay = 0;
+  let clock = 0;
 
-  initialScene?.onEnter?.({ width: canvas.width, height: canvas.height, ctx }, params);
+  initialScene?.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
 
   function frame(now: number) {
     if (!isPlaying) return;
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
+    clock += dt;
     if (lastFeatures.beatPulse > 0) beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
     const energy = lastFeatures.rms + lastFeatures.bass;
     beatPulseDecay = Math.max(0, beatPulseDecay - dt * (energy < 0.04 ? 8 : 3.2));
@@ -91,15 +106,23 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     };
     const scene = sceneRegistry.get(currentSceneId);
     const rgb = hexToRgb(String(params.colorSecondary || "#0a0a12"));
-    ctx.fillStyle = `rgba(${rgb},0.22)`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = `rgba(${rgb},0.18)`;
+    ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
     if (scene) {
-      scene.render({ width: canvas.width, height: canvas.height, ctx }, features, params, dt);
+      scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, dt);
     }
-    const bloomAmt =
-      (typeof params.bloom === "number" ? params.bloom : 0.55) *
-      (0.45 + features.rms * 0.4 + features.beatPulse * 0.35);
-    applyBloom(ctx, canvas, bloomAmt);
+    const bloomBase = typeof params.bloom === "number" ? params.bloom : 0.8;
+    const bloomAmt = bloomBase * (0.5 + features.rms * 0.35 + features.beatPulse * 0.4);
+    if (post) {
+      post.composite(sceneCanvas, {
+        bloom: bloomAmt * 1.35,
+        chroma: (typeof params.chroma === "number" ? params.chroma : 0.4) * (0.4 + features.treble),
+        grain: typeof params.grain === "number" ? params.grain : 0.035,
+        vignette: typeof params.vignette === "number" ? params.vignette : 0.32,
+      }, clock);
+    } else {
+      applyBloom(ctx, display, bloomAmt);
+    }
     rafId = requestAnimationFrame(frame);
   }
 
@@ -126,24 +149,35 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
       sceneRegistry.get(currentSceneId)?.onExit?.();
       currentSceneId = sceneId;
       params = { ...next.defaultParams, ...params };
-      next.onEnter?.({ width: canvas.width, height: canvas.height, ctx }, params);
+      next.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
     },
     setParams(partial: Partial<SceneParams>) { params = { ...params, ...partial }; },
     listScenes() {
       return Array.from(sceneRegistry.values()).map((s) => ({ id: s.id, name: s.name, description: s.description }));
     },
-    resize(width: number, height: number) { canvas.width = width; canvas.height = height; },
+    resize(width: number, height: number) {
+      sceneCanvas.width = width;
+      sceneCanvas.height = height;
+      if (post) post.resize(width, height);
+      else { display.width = width; display.height = height; }
+    },
     getState(): VisualState {
-      return { currentSceneId, params: { ...params }, isPlaying, width: canvas.width, height: canvas.height };
+      return { currentSceneId, params: { ...params }, isPlaying, width: drawTarget.width, height: drawTarget.height };
     },
     async captureFrame(): Promise<Blob> {
+      const src = post ? display : drawTarget;
       return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("toBlob failed")), "image/png");
+        src.toBlob((blob) => blob ? resolve(blob) : reject(new Error("toBlob failed")), "image/png");
       });
     },
-    destroy() { this.stop(); sceneRegistry.get(currentSceneId)?.onExit?.(); },
+    destroy() {
+      this.stop();
+      sceneRegistry.get(currentSceneId)?.onExit?.();
+      post?.destroy();
+    },
   };
 }
 
 export * from "./types";
 export { builtinScenes } from "./scenes";
+export { createGlPost } from "./gl/post-pipeline";
