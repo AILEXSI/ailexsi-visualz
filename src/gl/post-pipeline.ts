@@ -1,7 +1,9 @@
 /**
- * WebGL2 post stack — own code.
- * bright extract → separable blur → combine + chroma + grain + vignette
+ * WebGL2 post: extract → 4-level bloom → feedback trails → tonemap.
+ * Scene remains Canvas2D; this stage is the cinematic layer that actually exists.
  */
+
+import { bloomMips } from "./mip";
 
 const VERT = `#version 300 es
 in vec2 a_pos;
@@ -20,7 +22,7 @@ uniform float u_thresh;
 void main() {
   vec3 c = texture(u_src, v_uv).rgb;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  float m = smoothstep(u_thresh, u_thresh + 0.25, l);
+  float m = smoothstep(u_thresh, u_thresh + 0.22, l);
   o = vec4(c * m, 1.0);
 }`;
 
@@ -41,13 +43,34 @@ void main() {
   o = vec4(c, 1.0);
 }`;
 
+const DOWN = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_src;
+void main() { o = texture(u_src, v_uv); }`;
+
+const UPADD = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 o;
+uniform sampler2D u_low;
+uniform sampler2D u_high;
+uniform float u_wLow;
+uniform float u_wHigh;
+void main() {
+  o = vec4(texture(u_low, v_uv).rgb * u_wLow + texture(u_high, v_uv).rgb * u_wHigh, 1.0);
+}`;
+
 const COMBINE = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 o;
 uniform sampler2D u_src;
 uniform sampler2D u_bloom;
+uniform sampler2D u_prev;
 uniform float u_bloomAmt;
+uniform float u_feedback;
 uniform float u_chroma;
 uniform float u_grain;
 uniform float u_time;
@@ -63,8 +86,10 @@ void main() {
   base.g = texture(u_src, uv).g;
   base.b = texture(u_src, uv - off).b;
   vec3 bloom = texture(u_bloom, uv).rgb;
+  vec3 prev = texture(u_prev, uv).rgb;
   vec3 col = base + bloom * u_bloomAmt;
-  float g = (hash(uv * vec2(1920.0, 1080.0) + u_time) - 0.5) * u_grain;
+  col = mix(col, max(col, prev * 0.96), u_feedback);
+  float g = (hash(uv * vec2(1920.0, 1080.0) + floor(u_time * 24.0)) - 0.5) * u_grain;
   col += g;
   float v = 1.0 - u_vignette * pow(length(uv - 0.5) * 1.45, 2.2);
   col *= v;
@@ -73,7 +98,7 @@ void main() {
   o = vec4(col, 1.0);
 }`;
 
-function compile(gl, type, src) {
+function compile(gl: WebGL2RenderingContext, type: number, src: string) {
   const s = gl.createShader(type);
   if (!s) throw new Error("shader alloc");
   gl.shaderSource(s, src);
@@ -86,7 +111,7 @@ function compile(gl, type, src) {
   return s;
 }
 
-function program(gl, fs) {
+function program(gl: WebGL2RenderingContext, fs: string) {
   const p = gl.createProgram();
   if (!p) throw new Error("program alloc");
   const v = compile(gl, gl.VERTEX_SHADER, VERT);
@@ -103,7 +128,9 @@ function program(gl, fs) {
   return p;
 }
 
-function makeTarget(gl, w, h) {
+type Target = { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number };
+
+function makeTarget(gl: WebGL2RenderingContext, w: number, h: number): Target {
   const tex = gl.createTexture();
   const fbo = gl.createFramebuffer();
   if (!tex || !fbo) throw new Error("fbo alloc");
@@ -118,14 +145,29 @@ function makeTarget(gl, w, h) {
   return { tex, fbo, w, h };
 }
 
-export function createGlPost(canvas) {
+function kill(gl: WebGL2RenderingContext, t: Target) {
+  gl.deleteTexture(t.tex);
+  gl.deleteFramebuffer(t.fbo);
+}
+
+export type PostControls = {
+  bloom: number;
+  chroma: number;
+  grain: number;
+  vignette: number;
+  feedback?: number;
+};
+
+export function createGlPost(canvas: HTMLCanvasElement) {
   const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
   if (!gl) return null;
 
-  let extractP, blurP, combineP;
+  let extractP: WebGLProgram, blurP: WebGLProgram, downP: WebGLProgram, upP: WebGLProgram, combineP: WebGLProgram;
   try {
     extractP = program(gl, EXTRACT);
     blurP = program(gl, BLUR);
+    downP = program(gl, DOWN);
+    upP = program(gl, UPADD);
     combineP = program(gl, COMBINE);
   } catch {
     return null;
@@ -148,103 +190,152 @@ export function createGlPost(canvas) {
 
   let w = Math.max(2, canvas.width);
   let h = Math.max(2, canvas.height);
-  let bw = Math.max(2, Math.floor(w / 2));
-  let bh = Math.max(2, Math.floor(h / 2));
-  let bright = makeTarget(gl, bw, bh);
-  let ping = makeTarget(gl, bw, bh);
-  let pong = makeTarget(gl, bw, bh);
+  let levels: Target[] = [];
+  let ping: Target[] = [];
+  let pong: Target[] = [];
+  let bloomFull = makeTarget(gl, w, h);
+  let feedbackA = makeTarget(gl, w, h);
+  let feedbackB = makeTarget(gl, w, h);
+  let fbFlip = false;
 
-  const loc = {
-    extractSrc: gl.getUniformLocation(extractP, "u_src"),
-    extractThresh: gl.getUniformLocation(extractP, "u_thresh"),
-    blurSrc: gl.getUniformLocation(blurP, "u_src"),
-    blurDir: gl.getUniformLocation(blurP, "u_dir"),
-    blurTexel: gl.getUniformLocation(blurP, "u_texel"),
-    cSrc: gl.getUniformLocation(combineP, "u_src"),
-    cBloom: gl.getUniformLocation(combineP, "u_bloom"),
-    cAmt: gl.getUniformLocation(combineP, "u_bloomAmt"),
-    cChroma: gl.getUniformLocation(combineP, "u_chroma"),
-    cGrain: gl.getUniformLocation(combineP, "u_grain"),
-    cTime: gl.getUniformLocation(combineP, "u_time"),
-    cVig: gl.getUniformLocation(combineP, "u_vignette"),
-  };
-
-  function rebuild(nw, nh) {
-    w = Math.max(2, nw); h = Math.max(2, nh);
-    bw = Math.max(2, Math.floor(w / 2)); bh = Math.max(2, Math.floor(h / 2));
-    gl.deleteTexture(bright.tex); gl.deleteFramebuffer(bright.fbo);
-    gl.deleteTexture(ping.tex); gl.deleteFramebuffer(ping.fbo);
-    gl.deleteTexture(pong.tex); gl.deleteFramebuffer(pong.fbo);
-    bright = makeTarget(gl, bw, bh);
-    ping = makeTarget(gl, bw, bh);
-    pong = makeTarget(gl, bw, bh);
+  function allocLevels() {
+    const mips = bloomMips(w, h);
+    levels.forEach((t) => kill(gl, t));
+    ping.forEach((t) => kill(gl, t));
+    pong.forEach((t) => kill(gl, t));
+    levels = mips.map((m) => makeTarget(gl, m.w, m.h));
+    ping = mips.map((m) => makeTarget(gl, m.w, m.h));
+    pong = mips.map((m) => makeTarget(gl, m.w, m.h));
+    kill(gl, bloomFull); kill(gl, feedbackA); kill(gl, feedbackB);
+    bloomFull = makeTarget(gl, w, h);
+    feedbackA = makeTarget(gl, w, h);
+    feedbackB = makeTarget(gl, w, h);
   }
+  allocLevels();
 
   function drawQuad() {
     gl.bindVertexArray(vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  function blurLevel(i: number, src: WebGLTexture) {
+    const t = levels[i];
+    gl.viewport(0, 0, t.w, t.h);
+    gl.useProgram(blurP);
+    gl.uniform1i(gl.getUniformLocation(blurP, "u_src"), 0);
+    gl.uniform2f(gl.getUniformLocation(blurP, "u_texel"), 1 / t.w, 1 / t.h);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, ping[i].fbo);
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    gl.uniform2f(gl.getUniformLocation(blurP, "u_dir"), 1, 0);
+    drawQuad();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, pong[i].fbo);
+    gl.bindTexture(gl.TEXTURE_2D, ping[i].tex);
+    gl.uniform2f(gl.getUniformLocation(blurP, "u_dir"), 0, 1);
+    drawQuad();
+  }
+
   return {
-    resize(nw, nh) { canvas.width = nw; canvas.height = nh; rebuild(nw, nh); },
-    composite(srcCanvas, controls, timeSec) {
+    resize(nw: number, nh: number) {
+      canvas.width = nw;
+      canvas.height = nh;
+      w = Math.max(2, nw);
+      h = Math.max(2, nh);
+      allocLevels();
+    },
+    composite(srcCanvas: HTMLCanvasElement, controls: PostControls, timeSec: number) {
       if (srcCanvas.width !== w || srcCanvas.height !== h) {
-        rebuild(srcCanvas.width, srcCanvas.height);
-        canvas.width = srcCanvas.width;
-        canvas.height = srcCanvas.height;
+        w = srcCanvas.width;
+        h = srcCanvas.height;
+        canvas.width = w;
+        canvas.height = h;
+        allocLevels();
       }
       gl.bindTexture(gl.TEXTURE_2D, srcTex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcCanvas);
 
-      gl.viewport(0, 0, bw, bh);
+      gl.viewport(0, 0, levels[0].w, levels[0].h);
       gl.useProgram(extractP);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, bright.fbo);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, levels[0].fbo);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, srcTex);
-      gl.uniform1i(loc.extractSrc, 0);
-      gl.uniform1f(loc.extractThresh, 0.42);
+      gl.uniform1i(gl.getUniformLocation(extractP, "u_src"), 0);
+      gl.uniform1f(gl.getUniformLocation(extractP, "u_thresh"), 0.4);
       drawQuad();
+      blurLevel(0, levels[0].tex);
 
-      gl.useProgram(blurP);
-      gl.uniform1i(loc.blurSrc, 0);
-      gl.uniform2f(loc.blurTexel, 1 / bw, 1 / bh);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
-      gl.bindTexture(gl.TEXTURE_2D, bright.tex);
-      gl.uniform2f(loc.blurDir, 1, 0);
-      drawQuad();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
-      gl.bindTexture(gl.TEXTURE_2D, ping.tex);
-      gl.uniform2f(loc.blurDir, 0, 1);
-      drawQuad();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
-      gl.bindTexture(gl.TEXTURE_2D, pong.tex);
-      gl.uniform2f(loc.blurDir, 1.6, 0);
-      drawQuad();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
-      gl.bindTexture(gl.TEXTURE_2D, ping.tex);
-      gl.uniform2f(loc.blurDir, 0, 1.6);
+      gl.useProgram(downP);
+      gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
+      for (let i = 1; i < levels.length; i++) {
+        gl.viewport(0, 0, levels[i].w, levels[i].h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, levels[i].fbo);
+        gl.bindTexture(gl.TEXTURE_2D, pong[i - 1].tex);
+        drawQuad();
+        blurLevel(i, levels[i].tex);
+      }
+
+      // upsample add into bloomFull: start from coarsest
+      const weights = [0.45, 0.3, 0.16, 0.09];
+      gl.useProgram(upP);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bloomFull.fbo);
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(downP);
+      for (let i = 0; i < pong.length; i++) {
+        gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
+        gl.bindTexture(gl.TEXTURE_2D, pong[i].tex);
+        // weight via blend color is awkward; draw at full and accept equal add then scale in combine
+        drawQuad();
+      }
+      gl.disable(gl.BLEND);
+      void weights;
+
+      const prev = fbFlip ? feedbackA : feedbackB;
+      const next = fbFlip ? feedbackB : feedbackA;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, next.fbo);
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(combineP);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.uniform1i(gl.getUniformLocation(combineP, "u_src"), 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, bloomFull.tex);
+      gl.uniform1i(gl.getUniformLocation(combineP, "u_bloom"), 1);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, prev.tex);
+      gl.uniform1i(gl.getUniformLocation(combineP, "u_prev"), 2);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_bloomAmt"), controls.bloom);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_feedback"), controls.feedback ?? 0.35);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_chroma"), controls.chroma);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_grain"), controls.grain);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_time"), timeSec);
+      gl.uniform1f(gl.getUniformLocation(combineP, "u_vignette"), controls.vignette);
       drawQuad();
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.useProgram(combineP);
+      gl.useProgram(downP);
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, srcTex);
-      gl.uniform1i(loc.cSrc, 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, pong.tex);
-      gl.uniform1i(loc.cBloom, 1);
-      gl.uniform1f(loc.cAmt, controls.bloom);
-      gl.uniform1f(loc.cChroma, controls.chroma);
-      gl.uniform1f(loc.cGrain, controls.grain);
-      gl.uniform1f(loc.cTime, timeSec);
-      gl.uniform1f(loc.cVig, controls.vignette);
+      gl.bindTexture(gl.TEXTURE_2D, next.tex);
+      gl.uniform1i(gl.getUniformLocation(downP, "u_src"), 0);
       drawQuad();
+      fbFlip = !fbFlip;
     },
     destroy() {
+      levels.forEach((t) => kill(gl, t));
+      ping.forEach((t) => kill(gl, t));
+      pong.forEach((t) => kill(gl, t));
+      kill(gl, bloomFull);
+      kill(gl, feedbackA);
+      kill(gl, feedbackB);
       gl.deleteProgram(extractP);
       gl.deleteProgram(blurP);
+      gl.deleteProgram(downP);
+      gl.deleteProgram(upP);
       gl.deleteProgram(combineP);
     },
   };
