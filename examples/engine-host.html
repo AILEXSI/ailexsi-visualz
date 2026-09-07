@@ -17,7 +17,8 @@
   <label>Track <input id="file" type="file" accept="audio/*" /></label>
   <button id="play">Play</button>
   <select id="scene"></select>
-  <span id="info">build first: npm run build — then serve repo root</span>
+  <label><input id="gpu" type="checkbox" checked /> GPU filaments</label>
+  <span id="info">npm run build · serve repo root</span>
 </div>
 <script type="module">
 import { createVisualEngine } from "../dist/index.js";
@@ -41,14 +42,26 @@ engine.listScenes().forEach((s) => {
   sceneSel.appendChild(o);
 });
 sceneSel.onchange = () => engine.setScene(sceneSel.value);
+const gpu = document.getElementById("gpu");
+gpu.onchange = () => engine.setParams({ gpuFilaments: gpu.checked });
 addEventListener("resize", fit); fit();
 engine.start();
+function synth(tMs) {
+  const t = tMs / 1000;
+  const kick = Math.max(0, Math.sin(t * 6.2832 * 2.0)) ** 8;
+  const bass = 0.35 + 0.35 * Math.abs(Math.sin(t * 2.2));
+  const spec = new Float32Array(64);
+  for (let i = 0; i < 64; i++) spec[i] = Math.max(0, bass * (1 - i / 64) + kick * (i < 6 ? 1 : 0.1));
+  return { timeMs: tMs, rms: 0.25 + bass * 0.3, bass, mid: 0.2, treble: 0.12, spectrum: spec, onset: kick > 0.7, beatPulse: kick, kick, drop: 0 };
+}
 let audioCtx, audio, extractor, raf;
-function tick() {
+const t0 = performance.now();
+function tick(now) {
   raf = requestAnimationFrame(tick);
   if (extractor) engine.setFeatures(extractor.sample(audio ? audio.currentTime * 1000 : 0));
+  else engine.setFeatures(synth(now - t0));
 }
-tick();
+tick(t0);
 async function hook(f) {
   audio?.pause(); extractor?.disconnect(); audioCtx?.close();
   audioCtx = new AudioContext();
@@ -60,7 +73,7 @@ async function hook(f) {
 }
 file.onchange = () => { const f = file.files?.[0]; if (f) hook(f); };
 playBtn.onclick = async () => {
-  if (!audio) { info.textContent = "Erst Datei"; return; }
+  if (!audio) { info.textContent = "synthetic clock — or pick a file"; return; }
   if (audioCtx.state === "suspended") await audioCtx.resume();
   if (audio.paused) { await audio.play(); playBtn.textContent = "Pause"; }
   else { audio.pause(); playBtn.textContent = "Play"; }
