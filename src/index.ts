@@ -14,6 +14,7 @@ import type {
 import { builtinScenes } from "./scenes";
 import { applyBloom } from "./post/bloom";
 import { createGlPost } from "./gl/post-pipeline";
+import { createFeedbackState, stepFeedback } from "./gl/feedback";
 
 export interface VisualEngine {
   start(): void;
@@ -88,6 +89,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   let lastTime = performance.now();
   let beatPulseDecay = 0;
   let clock = 0;
+  const fbState = createFeedbackState();
 
   initialScene?.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
 
@@ -119,7 +121,12 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
         chroma: (typeof params.chroma === "number" ? params.chroma : 0.4) * (0.35 + features.treble),
         grain: typeof params.grain === "number" ? params.grain : 0.03,
         vignette: typeof params.vignette === "number" ? params.vignette : 0.32,
-        feedback: 0.22 + kick * 0.18 + (features.drop ?? 0) * 0.12,
+        feedback: stepFeedback(fbState, {
+          kick,
+          drop: features.drop ?? 0,
+          energy: features.rms * 0.5 + features.bass * 0.5,
+          dt,
+        }),
       }, clock);
     } else {
       applyBloom(ctx, display, bloomAmt);
@@ -183,3 +190,6 @@ export * from "./types";
 export { builtinScenes } from "./scenes";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
+export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";
+export { stepFeedback, createFeedbackState } from "./gl/feedback";
+export { chooseHdrFormat } from "./gl/hdr";
