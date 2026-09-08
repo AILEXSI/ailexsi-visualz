@@ -58,15 +58,16 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   sceneCanvas.height = Math.max(2, display.height || 720);
 
   const post = createGlPost(display);
-  const ctx = (post ? sceneCanvas : display).getContext("2d");
-  if (!ctx) throw new Error("Could not get 2D context");
+  const ctxOrNull = (post ? sceneCanvas : display).getContext("2d");
+  if (!ctxOrNull) throw new Error("Could not get 2D context");
+  const ctx: CanvasRenderingContext2D = ctxOrNull;
   const drawTarget = post ? sceneCanvas : display;
 
   let currentSceneId = options.initialSceneId ?? "resonance-wave";
   const initialScene = sceneRegistry.get(currentSceneId) ?? builtinScenes[0];
   if (initialScene) currentSceneId = initialScene.id;
 
-  let params: SceneParams = {
+  const engineDefaults: SceneParams = {
     intensity: 0.8,
     colorPrimary: "#ff6b35",
     colorSecondary: "#0a0a12",
@@ -77,9 +78,13 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     grain: 0.04,
     vignette: 0.35,
     gpuFilaments: true,
-    ...(initialScene?.defaultParams ?? {}),
-    ...options.initialParams,
   };
+  let params: SceneParams = Object.assign(
+    {},
+    engineDefaults,
+    initialScene?.defaultParams ?? {},
+    options.initialParams ?? {},
+  );
 
   let isPlaying = false;
   let rafId: number | null = null;
@@ -167,7 +172,14 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
       params = { ...next.defaultParams, ...params };
       next.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
     },
-    setParams(partial: Partial<SceneParams>) { params = { ...params, ...partial }; },
+    setParams(partial: Partial<SceneParams>) {
+      const next: SceneParams = { ...params };
+      for (const key of Object.keys(partial)) {
+        const value = partial[key];
+        if (value !== undefined) next[key] = value;
+      }
+      params = next;
+    },
     listScenes() {
       return Array.from(sceneRegistry.values()).map((s) => ({ id: s.id, name: s.name, description: s.description }));
     },
