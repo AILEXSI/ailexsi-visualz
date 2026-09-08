@@ -55,9 +55,12 @@ void main() {
   c.y += cos(u_time * 0.37 + 0.4) * 0.022;
   vec2 d = (uv - c) * vec2(1.0, 1.25);
   float r = length(d);
-  float outer = exp(-r * r * 18.0);
-  float mid = exp(-r * r * 55.0);
-  float inner = exp(-r * r * 140.0);
+  float ang = atan(d.y, d.x);
+  float flow = 0.55 + 0.45 * sin(ang * 2.0 + u_time * 0.42 + r * 3.2);
+  float bias = 0.62 + 0.38 * (0.5 + 0.5 * cos(ang - 0.55));
+  float outer = exp(-r * r * 18.0) * mix(0.72, 1.12, flow);
+  float mid = exp(-r * r * 55.0) * mix(0.78, 1.18, bias);
+  float inner = exp(-r * r * 140.0) * mix(0.85, 1.08, flow * bias);
   vec3 haze = vec3(1.00, 0.55, 0.22) * outer * 0.18;
   vec3 air = vec3(1.00, 0.68, 0.32) * mid * 0.28;
   vec3 hot = vec3(1.00, 0.86, 0.58) * inner * 0.22;
