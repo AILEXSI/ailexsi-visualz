@@ -1,6 +1,6 @@
 /**
  * WebGL2 post: extract → weighted bloom → feedback → tonemap.
- * Optional GPU filaments draw into scene FBO before bloom.
+ * Optional GPU filaments + atmosphere volume draw into scene FBO before bloom.
  */
 
 import { bloomMips } from "./mip";
@@ -43,6 +43,26 @@ precision highp float;
 in vec2 v_uv; out vec4 o;
 uniform sampler2D u_src; uniform float u_weight;
 void main() { o = vec4(texture(u_src, v_uv).rgb * u_weight, 1.0); }`;
+const ATMOS = `#version 300 es
+precision highp float;
+in vec2 v_uv; out vec4 o;
+uniform float u_time;
+void main() {
+  vec2 uv = v_uv;
+  vec2 core = vec2(0.5, 0.48);
+  vec2 c = core + vec2(0.055, 0.028);
+  c.x += sin(u_time * 0.55 + 1.3) * 0.034;
+  c.y += cos(u_time * 0.37 + 0.4) * 0.022;
+  vec2 d = (uv - c) * vec2(1.0, 1.25);
+  float r = length(d);
+  float outer = exp(-r * r * 18.0);
+  float mid = exp(-r * r * 55.0);
+  float inner = exp(-r * r * 140.0);
+  vec3 haze = vec3(1.00, 0.55, 0.22) * outer * 0.18;
+  vec3 air = vec3(1.00, 0.68, 0.32) * mid * 0.28;
+  vec3 hot = vec3(1.00, 0.86, 0.58) * inner * 0.22;
+  o = vec4(haze + air + hot, 1.0);
+}`;
 const COMBINE = `#version 300 es
 precision highp float;
 in vec2 v_uv; out vec4 o;
@@ -126,8 +146,8 @@ export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
     try { const probe = makeTarget(gl, 4, 4, chosen); kill(gl, probe); }
     catch { chosen = chooseHdrFormat({ getExtension: () => null, RGBA: gl.RGBA, RGBA8: gl.RGBA8, UNSIGNED_BYTE: gl.UNSIGNED_BYTE }); }
   }
-  let extractP: WebGLProgram, blurP: WebGLProgram, copyP: WebGLProgram, combineP: WebGLProgram;
-  try { extractP = program(gl, EXTRACT); blurP = program(gl, BLUR); copyP = program(gl, COPY_W); combineP = program(gl, COMBINE); }
+  let extractP: WebGLProgram, blurP: WebGLProgram, copyP: WebGLProgram, combineP: WebGLProgram, atmosP: WebGLProgram;
+  try { extractP = program(gl, EXTRACT); blurP = program(gl, BLUR); copyP = program(gl, COPY_W); combineP = program(gl, COMBINE); atmosP = program(gl, ATMOS); }
   catch { return null; }
   const filaments = createFilamentPass(gl);
   const vao = gl.createVertexArray(); const buf = gl.createBuffer();
@@ -143,6 +163,7 @@ export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
   const locExtract = { src: gl.getUniformLocation(extractP, "u_src"), thresh: gl.getUniformLocation(extractP, "u_thresh") };
   const locBlur = { src: gl.getUniformLocation(blurP, "u_src"), dir: gl.getUniformLocation(blurP, "u_dir"), texel: gl.getUniformLocation(blurP, "u_texel") };
   const locCopy = { src: gl.getUniformLocation(copyP, "u_src"), weight: gl.getUniformLocation(copyP, "u_weight") };
+  const locAtmos = { time: gl.getUniformLocation(atmosP, "u_time") };
   const locCombine = {
     src: gl.getUniformLocation(combineP, "u_src"), bloom: gl.getUniformLocation(combineP, "u_bloom"),
     prev: gl.getUniformLocation(combineP, "u_prev"), bloomAmt: gl.getUniformLocation(combineP, "u_bloomAmt"),
@@ -198,6 +219,15 @@ export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
           color: controls.filamentColor ?? [1.0, 0.55, 0.28],
         });
       }
+      if (controls.gpuFilaments) {
+        const song = (controls.songTimeMs ?? timeSec * 1000) * 0.001;
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.useProgram(atmosP);
+        gl.uniform1f(locAtmos.time, song);
+        drawQuad();
+        gl.disable(gl.BLEND);
+      }
       const sceneTex = sceneTarget.tex;
       gl.viewport(0, 0, levels[0].w, levels[0].h); gl.useProgram(extractP);
       gl.bindFramebuffer(gl.FRAMEBUFFER, levels[0].fbo);
@@ -239,7 +269,7 @@ export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
     destroy() {
       levels.forEach((t) => kill(gl, t)); ping.forEach((t) => kill(gl, t)); pong.forEach((t) => kill(gl, t));
       kill(gl, bloomFull); kill(gl, sceneTarget); kill(gl, feedbackA); kill(gl, feedbackB);
-      gl.deleteProgram(extractP); gl.deleteProgram(blurP); gl.deleteProgram(copyP); gl.deleteProgram(combineP);
+      gl.deleteProgram(extractP); gl.deleteProgram(blurP); gl.deleteProgram(copyP); gl.deleteProgram(combineP); gl.deleteProgram(atmosP);
       filaments?.destroy();
     },
   };
