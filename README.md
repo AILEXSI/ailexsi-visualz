@@ -2,7 +2,7 @@
 
 Local-first **Arranger** for one audio file → cinematic visuals → vis-only H.264 export.
 
-The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Resonance Wave** is the quality ruler. No Cutter, Mixer, or multi-track studio. No AGPL.
+The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Resonance Wave** is the quality ruler. Arranger + Cutter on **1 VIS + 1 audio** only. No Mixer or multi-track studio. No AGPL.
 
 **Version:** `0.4.0` — Arranger product cut (`docs/ARRANGER-VISUALZ-PLAN.md`). Windows MSI requires a numeric version (no `-arranger` prerelease).
 
@@ -10,8 +10,11 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 
 | Surface | What you get |
 |---------|----------------|
-| Timeline | Exactly **1 VIS track + 1 audio track** |
+| Timeline | Exactly **1 VIS track + 1 audio track** (clips may split) |
+| Screens | **ARRANGE** and **CUTTER** (Studio top-bar subset; Tab to switch) |
 | Import | One audio file → vis clip generated for the same span |
+| Cutter | IN/OUT, Split, trim / ripple trim, extract, lift — audio + VIS stay linked |
+| VIS | Cycle or pick cinematic scenes (Hero / resonance-wave and the rest). Preview + export follow the clip under the playhead |
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
 | Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed) |
 
@@ -27,9 +30,20 @@ Open `http://127.0.0.1:5173`. Tauri webview uses `npm run web:dev` on **1421** (
 1. **Import** an audio file (mp3 / wav / …).
 2. A VIS clip appears on the gold lane; Resonance Wave (or the selected scene) is generated for the file duration.
 3. **Play** — visuals follow the song. Seek on the ruler or lanes.
-4. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
+4. Switch **ARRANGE | CUTTER**. In Cutter: mark **IN** / **OUT**, **Split**, trim or **Extract** (ripple). Audio and VIS cut together.
+5. Cycle visual functions with **◀ ▶** (or `[` `]`) or the VIS dropdown. The clip under the playhead changes; export uses `sceneAt` for each frame.
+6. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
 
-Space = play/pause. Home = stop.
+| Key | Action |
+|-----|--------|
+| Space | Play / pause |
+| Home | Stop |
+| Tab | Arrange ↔ Cutter |
+| I / O / X | Set IN, set OUT, clear marks |
+| S | Split at playhead |
+| Q / W / Alt+W | Ripple trim IN, trim OUT, ripple trim OUT |
+| ' / ; | Extract range, lift range |
+| [ / ] | Previous / next visual function |
 
 ## Windows EXE (local deploy)
 
@@ -106,5 +120,7 @@ npm run typecheck
 | Audio import → generated vis | Implemented |
 | Cinematic engine under preview | Implemented |
 | Vis-only H.264 export | Implemented (no AAC) |
-| Cutter / Mixer / multi-track | Intentionally absent |
+| Cutter (1+1 trim / split / extract) | Implemented (not Studio V1/V2 transitions) |
+| VIS function cycle | Implemented (`createVisualEngine.setScene`) |
+| Mixer / multi-track | Intentionally absent |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

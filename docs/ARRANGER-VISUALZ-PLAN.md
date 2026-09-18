@@ -1,6 +1,6 @@
 # Arranger-only Visualz — architecture plan
 
-Phase 1 capture of **this repo** (`@ailexsi/visualz` cinematic engine) and **read-only** Resonance Studio V5.6 (`https://github.com/AILEXSI/ailexsi-resonance-studio-v5.6`). Product cut: local-first Arranger with **1 visual track + 1 audio track**, audio→visuals, vis-only H.264 export. No Cutter, Mixer, or multi-track studio.
+Phase 1 capture of **this repo** (`@ailexsi/visualz` cinematic engine) and **read-only** Resonance Studio V5.6 (`https://github.com/AILEXSI/ailexsi-resonance-studio-v5.6`). Product cut: local-first Arranger with **1 visual track + 1 audio track**, audio→visuals, vis-only H.264 export. No Mixer or multi-track studio. Cutter + VIS function cycle were lifted later (see §8) without bringing V1/V2 transitions or the 64-stem mixer.
 
 Maps checked on 2026-09-18. Studio clone used for reading only; it is not modified and is not part of this tree.
 
@@ -113,25 +113,27 @@ Not Studio’s V1/V2/A1/A2. Not a generic NLE.
 ```
 Project
   name, playheadMs, loop, zoomPxPerSec, scrollMs
-  sceneId                 // active visualz scene (default resonance-wave)
-  audio: AudioClip | null // the one audio track’s clip
-  vis: VisClip | null     // the one visual track’s generated span
+  sceneId                 // default / cycle target (resonance-wave)
+  inPointMs, outPointMs   // cutter marks
+  source                  // the one imported file (objectUrl, peaks, duration)
+  audio: AudioClip[]      // clips on the one audio track (may split)
+  vis: VisClip[]          // clips on the one visual track (may split)
 ```
 
 ```
-AudioClip  { id, name, durationMs, startMs, mimeType, objectUrl, peaks[] }
-VisClip    { id, sceneId, startMs, durationMs }   // generated from audio
+AudioClip  { id, name, startMs, durationMs, sourceInMs, sourceOutMs }
+VisClip    { id, sceneId, startMs, durationMs, sourceInMs, sourceOutMs }
 ```
 
 Rules:
 
-1. Empty project: both tracks exist as **lanes**; both clips are empty.
+1. Empty project: both tracks exist as **lanes**; both clip arrays are empty.
 2. Import one audio file → one `AudioClip` on the audio track (start 0) → system **generates** one `VisClip` covering the same `[start, start+duration)` with `sceneId` (default `resonance-wave`).
-3. Changing scene updates the vis clip + `engine.setScene`. No second vis clip. No second audio clip (re-import replaces).
-4. Timeline duration = audio duration (or 0).
-5. Export range = vis clip span (same as audio). Picture only — vis-only MP4.
+3. Changing / cycling scene updates the vis clip **under the playhead** + `engine.setScene`. After a split, later vis clips keep their own scene. Re-import replaces the one source.
+4. Timeline duration = last clip end (or 0). Playback and export map timeline → source time via `sourceInMs`/`sourceOutMs`.
+5. Export range = current 1+1 timeline. Picture only — vis-only MP4. `sceneAt(time)` + `featureTimeAt(time)` so cuts and VIS switches land in the file.
 
-This is the 1+1 model. VIS is a first-class track in the **product** UI even though Studio stored it as overlay state.
+This is still the 1+1 model (two tracks). Split creates more **clips**, not more tracks. VIS is a first-class track in the **product** UI even though Studio stored it as overlay state.
 
 ---
 
@@ -139,11 +141,11 @@ This is the 1+1 model. VIS is a first-class track in the **product** UI even tho
 
 | Studio / old visualz | Why gone |
 |----------------------|----------|
-| Cutter, transitions, V1/V2 | No picture source except the engine |
+| Cutter *transitions*, V1/V2 | No picture source except the engine — 1+1 trim/split was lifted instead |
 | Mixer, pan, solo, master, meters | One audio file, unity gain |
 | Dynamic A3…A64, stem ZIP, chapter groups | One audio track |
 | VOL lane, Write Volume, clip fades/rate/lock | Out of scope |
-| Inspector / File overlay / Help sheet / Snap/Split/Undo | Not required for this cut |
+| Inspector / File overlay / Help sheet / Snap/Undo | Not required for this cut |
 | Tauri / IndexedDB project save | Local-first web host; blobs stay in-session |
 | `examples/demo.html` inline sketch | Already deprecated; engine-host stays as library demo |
 | Studio LEXI catalog / vendored old Visualz | This repo’s cinematic scenes + post are the renderer |
@@ -155,10 +157,11 @@ This is the 1+1 model. VIS is a first-class track in the **product** UI even tho
 Vite + React app under `app/`, same stack family as 5.6. Tauri 2 host under `src-tauri/` (Windows EXE / local deploy). Imports the engine via `@ailexsi/visualz` → `src/`.
 
 ```
-toolbar: Import · Export · scene · version
+toolbar: Import · Export · ARRANGE|CUTTER · VIS prev/select/next · version
 preview: createVisualEngine canvas (Hero + WebGL2 post)
-transport: Play / Pause / Stop / ±1f / Loop / timecode
-timeline: ruler + VIS lane + Audio lane + playhead
+cutter:  IN/OUT · Split · trim/ripple · extract/lift · cut-strip (CUTTER screen)
+transport: Play / Pause / Stop / ±1f / Loop / IN / OUT / Split / timecode
+timeline: ruler + VIS lane + Audio lane + playhead (+ trim handles in Cutter)
 ```
 
 Workflow:
@@ -197,3 +200,19 @@ Mirrors 5.6 packaging, Visualz naming:
 | App version | **`0.4.0`** (MSI-safe; Windows rejects non-numeric prereleases like `-arranger`) |
 
 Rust entry is **minimal** (dialog + fs plugins + `allow_user_paths`). No last-project / 64-track media scope. Chrome export stays FSA/`<a download>`; EXE export uses Tauri save + write (WebView2 has no download shelf). Import stays `<input type="file">`.
+
+---
+
+## 8. Cutter + VIS function cycle (lifted from 5.6, 1+1 only)
+
+Read-only Studio maps: `src/ui/screens/ScreenNav.tsx`, `src/core/timeline.ts` (`splitAtPlayhead`, `setInPoint` / `setOutPoint`, ripple trim, extract/lift), `src/core/visualizer.ts` (`nextSceneId`, `sceneAt`). Studio’s `src/ui/cutter/Cutter.tsx` is a **V1/V2 transition** editor — not lifted. Visualz Cutter is the timeline cut math + ARRANGE | CUTTER chrome.
+
+| Studio | Visualz |
+|--------|---------|
+| Top bar `ARRANGE \| CUTTER` + Tab | Same `ScreenNav` subset |
+| I / O / X, S split, Q / Alt+W ripple trim, `'` extract, `;` lift | Same keys on the 1+1 lanes (W = lift trim OUT, Alt+W ripple) |
+| Dual-write linked A/V | Audio + VIS clips stay paired by the same edit |
+| VIS scene picker + `nextSceneId` | Toolbar VIS prev / select / next and `[` / `]`; `createVisualEngine.setScene` |
+| Transition stack / V1/V2 | Skipped |
+
+Cutter panel: IN/OUT, Split, Trim IN/OUT, Ripple IN/OUT, Extract, Lift, plus a cut-strip of edit points. Arrange view keeps I/O/Split on the transport. Preview and export both use `sceneAt` / `featureTimeAt`.

@@ -50,6 +50,44 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
 }
 .toolbar-group { display: flex; gap: 6px; }
 .toolbar-scene { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.toolbar-scene span { color: var(--accent); font-size: 11px; letter-spacing: 0.1em; font-weight: 600; }
+
+.screen-nav {
+  display: inline-flex;
+  gap: 0;
+  align-items: stretch;
+  padding: 1px;
+  background: #0c1016;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.screen-nav-item {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.screen-nav-item + .screen-nav-item {
+  border-left: 1px solid var(--line);
+  border-radius: 0 3px 3px 0;
+}
+.screen-nav-item:first-child { border-radius: 3px 0 0 3px; }
+.screen-nav-item.on {
+  color: var(--text);
+  background: #1d2430;
+  box-shadow: inset 0 0 0 1px #3a4456;
+}
+.screen-nav-item:hover:not(.on) {
+  color: var(--text);
+  background: #141a24;
+}
 .toolbar-brand { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .project-name { font-size: 13px; }
 .version {
@@ -62,12 +100,12 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
 }
 
 .stage {
-  display: grid;
-  grid-template-rows: minmax(180px, 1fr) auto minmax(160px, 0.55fr);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 
-.preview-wrap { display: flex; flex-direction: column; min-height: 0; background: #050608; }
+.preview-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 160px; background: #050608; }
 .preview-stage {
   position: relative;
   flex: 1;
@@ -112,7 +150,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
 .timeline {
   --lane-label-px: 80px;
   background: #0c1016;
-  min-height: 0;
+  flex: 0 0 38%;
+  min-height: 160px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -216,6 +255,109 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
   background: var(--playhead);
   pointer-events: none;
   z-index: 5;
+}
+.mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  z-index: 4;
+}
+.mark-in { background: #7aa2ff; }
+.mark-out { background: #d4b45a; }
+.mark-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(212, 180, 90, 0.12);
+  pointer-events: none;
+  z-index: 1;
+}
+.clip-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.18);
+  z-index: 3;
+  cursor: ew-resize;
+}
+.clip-handle-in { left: 0; }
+.clip-handle-out { right: 0; }
+.clip-handle:hover { background: rgba(255, 255, 255, 0.35); }
+
+.cutter {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.cutter-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.cutter-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 8px 0 0;
+}
+.cutter-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+.cutter-pair { font-size: 13px; }
+.cutter-empty { color: var(--muted); font-size: 13px; }
+.cutter-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cut-strip {
+  flex: 1 0 100%;
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.cut-strip-track { position: relative; height: 100%; width: 100%; }
+.cut-strip-tick {
+  position: absolute;
+  top: 2px;
+  width: 2px;
+  height: 10px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 1px;
+  background: var(--muted);
+  cursor: pointer;
+}
+.cut-strip-tick.current {
+  width: 3px;
+  background: var(--accent);
+}
+.cut-strip-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(212, 180, 90, 0.2);
+}
+.cut-strip-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--playhead);
+  pointer-events: none;
 }
 
 .status {

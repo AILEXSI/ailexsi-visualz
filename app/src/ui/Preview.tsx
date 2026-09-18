@@ -7,7 +7,7 @@ import {
   type OfflineFeatureExtractor,
   type VisualEngine,
 } from "@ailexsi/visualz";
-import type { Project } from "../model";
+import { featureTimeAt, sceneAt, type Project } from "../model";
 
 interface Props {
   project: Project;
@@ -22,13 +22,14 @@ export function Preview(props: Props) {
   const liveRef = useRef<FeatureExtractor | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const hookedUrl = useRef<string | null>(null);
+  const sceneNow = sceneAt(props.project, props.project.playheadMs);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const engine = createVisualEngine({
       canvas,
-      initialSceneId: props.project.sceneId,
+      initialSceneId: sceneNow,
       preserveDrawingBuffer: true,
     });
     engineRef.current = engine;
@@ -50,15 +51,17 @@ export function Preview(props: Props) {
       engine.destroy();
       engineRef.current = null;
     };
+    // Engine is created once; scene updates go through setScene.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    engineRef.current?.setScene(props.project.sceneId);
-  }, [props.project.sceneId]);
+    engineRef.current?.setScene(sceneNow);
+  }, [sceneNow]);
 
   useEffect(() => {
     const audio = props.audioEl;
-    const url = props.project.audio?.objectUrl ?? null;
+    const url = props.project.source?.objectUrl ?? null;
     if (!audio || !url) {
       liveRef.current?.disconnect();
       liveRef.current = null;
@@ -81,12 +84,13 @@ export function Preview(props: Props) {
       if (audioCtxRef.current === ctx) audioCtxRef.current = null;
       hookedUrl.current = null;
     };
-  }, [props.audioEl, props.project.audio?.objectUrl]);
+  }, [props.audioEl, props.project.source?.objectUrl]);
 
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
     const audio = props.audioEl;
+    engine.setScene(sceneNow);
 
     if (props.playing && audio) {
       engine.start();
@@ -105,16 +109,16 @@ export function Preview(props: Props) {
     }
 
     engine.stop();
-    const t = props.project.playheadMs;
+    const t = featureTimeAt(props.project, props.project.playheadMs);
     engine.setFeatures(props.extractor ? props.extractor.sample(t) : silentFeatures(t));
     engine.step(1 / 30);
-  }, [props.playing, props.project.playheadMs, props.project.sceneId, props.extractor, props.audioEl]);
+  }, [props.playing, props.project, sceneNow, props.extractor, props.audioEl]);
 
   return (
     <div className="preview-wrap" data-testid="preview">
       <div className="preview-stage">
         <canvas ref={canvasRef} data-testid="visualizer-canvas" />
-        {!props.project.audio ? (
+        {!props.project.source ? (
           <div className="preview-empty">Import an audio file to generate visuals</div>
         ) : null}
       </div>

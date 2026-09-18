@@ -1,16 +1,27 @@
-/** 1 visual track + 1 audio track. No V1/V2, no mixer collection. */
+/** 1 visual track + 1 audio track. Clips on those lanes may split; no mixer / extra stems. */
 
 export const FRAME_MS = 1000 / 30;
 export const DEFAULT_SCENE_ID = "resonance-wave";
+export const SPLIT_EDGE_GUARD_MS = 50;
+export const MIN_CLIP_MS = 50;
+
+export type ScreenId = "arrange" | "cutter";
+
+export interface AudioSource {
+  name: string;
+  mimeType: string;
+  objectUrl: string;
+  peaks: number[];
+  sourceDurationMs: number;
+}
 
 export interface AudioClip {
   id: string;
   name: string;
-  durationMs: number;
   startMs: number;
-  mimeType: string;
-  objectUrl: string;
-  peaks: number[];
+  durationMs: number;
+  sourceInMs: number;
+  sourceOutMs: number;
 }
 
 export interface VisClip {
@@ -18,6 +29,8 @@ export interface VisClip {
   sceneId: string;
   startMs: number;
   durationMs: number;
+  sourceInMs: number;
+  sourceOutMs: number;
 }
 
 export interface Project {
@@ -27,9 +40,20 @@ export interface Project {
   zoomPxPerSec: number;
   scrollMs: number;
   sceneId: string;
-  audio: AudioClip | null;
-  vis: VisClip | null;
+  inPointMs: number | null;
+  outPointMs: number | null;
+  source: AudioSource | null;
+  audio: AudioClip[];
+  vis: VisClip[];
 }
+
+export type TimedClip = {
+  id: string;
+  startMs: number;
+  durationMs: number;
+  sourceInMs: number;
+  sourceOutMs: number;
+};
 
 export function createEmptyProject(name = "Untitled Visualz"): Project {
   return {
@@ -39,15 +63,33 @@ export function createEmptyProject(name = "Untitled Visualz"): Project {
     zoomPxPerSec: 80,
     scrollMs: 0,
     sceneId: DEFAULT_SCENE_ID,
-    audio: null,
-    vis: null,
+    inPointMs: null,
+    outPointMs: null,
+    source: null,
+    audio: [],
+    vis: [],
   };
 }
 
+export function clipEndMs(clip: { startMs: number; durationMs: number }): number {
+  return clip.startMs + clip.durationMs;
+}
+
+export function clipAtTime<T extends { startMs: number; durationMs: number }>(
+  clips: readonly T[],
+  timeMs: number,
+): T | null {
+  const hits = clips.filter((c) => timeMs >= c.startMs && timeMs < clipEndMs(c));
+  if (hits.length) return hits[0] ?? null;
+  const ends = clips.filter((c) => timeMs === clipEndMs(c));
+  return ends[ends.length - 1] ?? null;
+}
+
 export function projectDurationMs(project: Project): number {
-  const a = project.audio;
-  if (!a) return 0;
-  return Math.max(0, a.startMs + a.durationMs);
+  let max = 0;
+  for (const c of project.audio) max = Math.max(max, clipEndMs(c));
+  for (const c of project.vis) max = Math.max(max, clipEndMs(c));
+  return Math.max(0, max);
 }
 
 export function clampPlayhead(ms: number, durationMs: number): number {
@@ -68,42 +110,379 @@ export function newId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function snapMs(n: number): number {
+  return Math.round(n);
+}
+
+function sourceWindow(clip: TimedClip): number {
+  return Math.max(1, clip.sourceOutMs - clip.sourceInMs);
+}
+
+/** Source (file) time for a timeline position on this clip. */
+export function sourceTimeAt(clip: TimedClip, timelineMs: number): number {
+  const t = (timelineMs - clip.startMs) / Math.max(1, clip.durationMs);
+  const u = Math.max(0, Math.min(1, t));
+  return clip.sourceInMs + u * sourceWindow(clip);
+}
+
+/** Timeline position for a source time on this clip. */
+export function timelineTimeAt(clip: TimedClip, sourceMs: number): number {
+  const t = (sourceMs - clip.sourceInMs) / sourceWindow(clip);
+  const u = Math.max(0, Math.min(1, t));
+  return clip.startMs + u * clip.durationMs;
+}
+
+export function featureTimeAt(project: Project, timelineMs: number): number {
+  const clip = clipAtTime(project.audio, timelineMs);
+  return clip ? sourceTimeAt(clip, timelineMs) : timelineMs;
+}
+
+export function sceneAt(project: Project, timelineMs: number): string {
+  const clip = clipAtTime(project.vis, timelineMs);
+  return clip?.sceneId ?? project.sceneId;
+}
+
+export function editRangeOf(project: Project): { inMs: number; outMs: number } | null {
+  const inMs = project.inPointMs;
+  const outMs = project.outPointMs;
+  if (inMs == null || outMs == null || outMs <= inMs) return null;
+  return { inMs, outMs };
+}
+
+export function editPointsOf(project: Project): number[] {
+  const pts = new Set<number>([0, projectDurationMs(project)]);
+  for (const c of project.audio) {
+    pts.add(c.startMs);
+    pts.add(clipEndMs(c));
+  }
+  for (const c of project.vis) {
+    pts.add(c.startMs);
+    pts.add(clipEndMs(c));
+  }
+  if (project.inPointMs != null) pts.add(project.inPointMs);
+  if (project.outPointMs != null) pts.add(project.outPointMs);
+  return [...pts].filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+}
+
 /** Import audio → one audio clip + generated vis span on the single vis track. */
 export function placeAudio(
   project: Project,
-  audio: Omit<AudioClip, "id" | "startMs"> & { startMs?: number },
+  audio: {
+    name: string;
+    durationMs: number;
+    mimeType: string;
+    objectUrl: string;
+    peaks: number[];
+    startMs?: number;
+  },
 ): Project {
-  const startMs = audio.startMs ?? 0;
-  const clip: AudioClip = {
-    id: newId("aud"),
+  const startMs = snapMs(audio.startMs ?? 0);
+  const durationMs = Math.max(0, snapMs(audio.durationMs));
+  const source: AudioSource = {
     name: audio.name,
-    durationMs: Math.max(0, audio.durationMs),
-    startMs,
     mimeType: audio.mimeType,
     objectUrl: audio.objectUrl,
     peaks: audio.peaks,
+    sourceDurationMs: durationMs,
+  };
+  const clip: AudioClip = {
+    id: newId("aud"),
+    name: audio.name,
+    startMs,
+    durationMs,
+    sourceInMs: 0,
+    sourceOutMs: durationMs,
   };
   const vis: VisClip = {
     id: newId("vis"),
     sceneId: project.sceneId || DEFAULT_SCENE_ID,
     startMs,
-    durationMs: clip.durationMs,
+    durationMs,
+    sourceInMs: 0,
+    sourceOutMs: durationMs,
   };
   return {
     ...project,
-    audio: clip,
-    vis,
+    source,
+    audio: [clip],
+    vis: [vis],
     playheadMs: startMs,
-    name: project.audio ? project.name : stripExt(audio.name),
+    inPointMs: null,
+    outPointMs: null,
+    name: project.source ? project.name : stripExt(audio.name),
   };
 }
 
+/** Apply scene to the vis clip under the playhead (or the only vis clip). */
 export function setScene(project: Project, sceneId: string): Project {
-  return {
-    ...project,
-    sceneId,
-    vis: project.vis ? { ...project.vis, sceneId } : project.vis,
+  const hit = clipAtTime(project.vis, project.playheadMs);
+  let vis = project.vis;
+  if (hit) {
+    vis = project.vis.map((c) => (c.id === hit.id ? { ...c, sceneId } : c));
+  } else if (project.vis.length <= 1) {
+    vis = project.vis.map((c) => ({ ...c, sceneId }));
+  }
+  return { ...project, sceneId, vis };
+}
+
+export function cycleScene(project: Project, sceneIds: readonly string[], delta: number): Project {
+  if (!sceneIds.length) return project;
+  const current = sceneAt(project, project.playheadMs);
+  const i = sceneIds.indexOf(current);
+  const base = i < 0 ? 0 : i;
+  const next = sceneIds[((base + delta) % sceneIds.length + sceneIds.length) % sceneIds.length]!;
+  return setScene(project, next);
+}
+
+export function setInPoint(project: Project, timeMs = project.playheadMs): Project {
+  const t = Math.max(0, snapMs(timeMs));
+  if (project.outPointMs != null && t > project.outPointMs) {
+    return { ...project, inPointMs: project.outPointMs, outPointMs: t };
+  }
+  return { ...project, inPointMs: t };
+}
+
+export function setOutPoint(project: Project, timeMs = project.playheadMs): Project {
+  const t = Math.max(0, snapMs(timeMs));
+  if (project.inPointMs != null && t < project.inPointMs) {
+    return { ...project, inPointMs: t, outPointMs: project.inPointMs };
+  }
+  return { ...project, outPointMs: t };
+}
+
+export function clearInOut(project: Project): Project {
+  return { ...project, inPointMs: null, outPointMs: null };
+}
+
+function splitOne<T extends TimedClip>(
+  clip: T,
+  timeMs: number,
+  newIdValue: string,
+  edgeGuardMs: number,
+): { left: T; right: T } | { error: string } {
+  const offset = timeMs - clip.startMs;
+  if (offset < edgeGuardMs || clip.durationMs - offset < edgeGuardMs) {
+    return { error: "Split too close to clip edge" };
+  }
+  const cutSource = sourceTimeAt(clip, timeMs);
+  const left = { ...clip, durationMs: offset, sourceOutMs: cutSource };
+  const right = {
+    ...clip,
+    id: newIdValue,
+    startMs: timeMs,
+    durationMs: clip.durationMs - offset,
+    sourceInMs: cutSource,
+    sourceOutMs: clip.sourceOutMs,
   };
+  return { left, right };
+}
+
+function splitLane<T extends TimedClip>(
+  clips: T[],
+  timeMs: number,
+  idPrefix: string,
+  edgeGuardMs: number,
+): { clips: T[]; error?: string; changed: boolean } {
+  const hit = clips.find((c) => timeMs > c.startMs && timeMs < clipEndMs(c));
+  if (!hit) return { clips, changed: false };
+  const parts = splitOne(hit, timeMs, newId(idPrefix), edgeGuardMs);
+  if ("error" in parts) return { clips, error: parts.error, changed: false };
+  return {
+    clips: clips.flatMap((c) => (c.id === hit.id ? [parts.left, parts.right] : [c])),
+    changed: true,
+  };
+}
+
+/** Split audio + vis under the playhead (linked 1+1 dual-write). */
+export function splitAtPlayhead(
+  project: Project,
+  edgeGuardMs = SPLIT_EDGE_GUARD_MS,
+): { project: Project; error?: string } {
+  const t = project.playheadMs;
+  const audio = splitLane(project.audio, t, "aud", edgeGuardMs);
+  const vis = splitLane(project.vis, t, "vis", edgeGuardMs);
+  if (!audio.changed && !vis.changed) {
+    return { project, error: audio.error ?? vis.error ?? "No clip under playhead" };
+  }
+  if (audio.error && vis.error) return { project, error: audio.error };
+  return {
+    project: {
+      ...project,
+      audio: audio.clips,
+      vis: vis.clips,
+    },
+    error: audio.error ?? vis.error,
+  };
+}
+
+function shiftAfter<T extends { startMs: number }>(clips: T[], fromMs: number, deltaMs: number): T[] {
+  if (deltaMs === 0) return clips;
+  return clips.map((c) => (c.startMs >= fromMs - 0.001 ? { ...c, startMs: c.startMs + deltaMs } : c));
+}
+
+function trimInClip<T extends TimedClip>(clip: T, timeMs: number): T | { error: string } {
+  const end = clipEndMs(clip);
+  if (timeMs <= clip.startMs + MIN_CLIP_MS || timeMs >= end) {
+    return { error: "Trim in rejected" };
+  }
+  const src = sourceTimeAt(clip, timeMs);
+  return {
+    ...clip,
+    startMs: timeMs,
+    durationMs: end - timeMs,
+    sourceInMs: src,
+  };
+}
+
+function trimOutClip<T extends TimedClip>(clip: T, timeMs: number): T | { error: string } {
+  if (timeMs >= clipEndMs(clip) - MIN_CLIP_MS || timeMs <= clip.startMs) {
+    return { error: "Trim out rejected" };
+  }
+  const src = sourceTimeAt(clip, timeMs);
+  return {
+    ...clip,
+    durationMs: timeMs - clip.startMs,
+    sourceOutMs: src,
+  };
+}
+
+function mapClip<T extends TimedClip>(clips: T[], id: string, next: T): T[] {
+  return clips.map((c) => (c.id === id ? next : c));
+}
+
+/**
+ * Trim IN of the clip under the playhead to the playhead.
+ * Ripple closes the hole and shifts later clips left (Studio Q).
+ */
+export function trimInToPlayhead(
+  project: Project,
+  ripple = false,
+): { project: Project; error?: string } {
+  const t = project.playheadMs;
+  const a = clipAtTime(project.audio, t);
+  const v = clipAtTime(project.vis, t);
+  if (!a && !v) return { project, error: "No clip under playhead" };
+
+  let audio = project.audio;
+  let vis = project.vis;
+  let delta = 0;
+
+  if (a) {
+    const next = trimInClip(a, t);
+    if ("error" in next) return { project, error: next.error };
+    delta = next.startMs - a.startMs;
+    audio = mapClip(audio, a.id, ripple ? { ...next, startMs: a.startMs } : next);
+    if (ripple) {
+      audio = audio.map((c) =>
+        c.id === a.id ? c : c.startMs >= t ? { ...c, startMs: c.startMs - delta } : c,
+      );
+    }
+  }
+  if (v) {
+    const next = trimInClip(v, t);
+    if ("error" in next) return { project, error: next.error };
+    const d = next.startMs - v.startMs;
+    vis = mapClip(vis, v.id, ripple ? { ...next, startMs: v.startMs } : next);
+    if (ripple) {
+      vis = vis.map((c) =>
+        c.id === v.id ? c : c.startMs >= t ? { ...c, startMs: c.startMs - d } : c,
+      );
+    }
+  }
+  return { project: { ...project, audio, vis } };
+}
+
+/** Trim OUT of the clip under the playhead. Ripple packs later clips (Studio W). */
+export function trimOutToPlayhead(
+  project: Project,
+  ripple = false,
+): { project: Project; error?: string } {
+  const t = project.playheadMs;
+  const a = clipAtTime(project.audio, t);
+  const v = clipAtTime(project.vis, t);
+  if (!a && !v) return { project, error: "No clip under playhead" };
+
+  let audio = project.audio;
+  let vis = project.vis;
+
+  if (a) {
+    const next = trimOutClip(a, t);
+    if ("error" in next) return { project, error: next.error };
+    const removed = clipEndMs(a) - clipEndMs(next);
+    audio = mapClip(audio, a.id, next);
+    if (ripple) audio = shiftAfter(audio, clipEndMs(a) - 0.001, -removed);
+  }
+  if (v) {
+    const next = trimOutClip(v, t);
+    if ("error" in next) return { project, error: next.error };
+    const removed = clipEndMs(v) - clipEndMs(next);
+    vis = mapClip(vis, v.id, next);
+    if (ripple) vis = shiftAfter(vis, clipEndMs(v) - 0.001, -removed);
+  }
+  return { project: { ...project, audio, vis } };
+}
+
+/** Drag a clip edge. `nextEdgeMs` is the new IN (left) or OUT (right) time. Dual-writes both lanes. */
+export function trimEdgeAt(
+  project: Project,
+  edge: "in" | "out",
+  nextEdgeMs: number,
+  ripple = false,
+): { project: Project; error?: string } {
+  const parked = { ...project, playheadMs: nextEdgeMs };
+  return edge === "in" ? trimInToPlayhead(parked, ripple) : trimOutToPlayhead(parked, ripple);
+}
+
+function deleteFullyInside<T extends TimedClip>(clips: T[], inMs: number, outMs: number): T[] {
+  return clips.filter((c) => !(c.startMs >= inMs && clipEndMs(c) <= outMs));
+}
+
+function splitAtTime(project: Project, timeMs: number): Project {
+  const audio = splitLane(project.audio, timeMs, "aud", SPLIT_EDGE_GUARD_MS);
+  const vis = splitLane(project.vis, timeMs, "vis", SPLIT_EDGE_GUARD_MS);
+  return { ...project, audio: audio.clips, vis: vis.clips };
+}
+
+/** Split at IN/OUT, remove the middle, leave a hole. */
+export function liftRange(project: Project): { project: Project; error?: string } {
+  const range = editRangeOf(project);
+  if (!range) return { project, error: "Set IN and OUT first" };
+  let next = splitAtTime(splitAtTime(project, range.inMs), range.outMs);
+  next = {
+    ...next,
+    audio: deleteFullyInside(next.audio, range.inMs, range.outMs),
+    vis: deleteFullyInside(next.vis, range.inMs, range.outMs),
+  };
+  return { project: next };
+}
+
+/** Split at IN/OUT, remove the middle, ripple later clips left (Studio extract). */
+export function extractRange(project: Project): { project: Project; error?: string } {
+  const range = editRangeOf(project);
+  if (!range) return { project, error: "Set IN and OUT first" };
+  const lifted = liftRange(project);
+  if (lifted.error) return lifted;
+  const delta = range.inMs - range.outMs;
+  return {
+    project: {
+      ...lifted.project,
+      audio: shiftAfter(lifted.project.audio, range.outMs, delta),
+      vis: shiftAfter(lifted.project.vis, range.outMs, delta),
+      playheadMs: range.inMs,
+    },
+  };
+}
+
+export function peaksForWindow(
+  peaks: number[],
+  sourceInMs: number,
+  sourceOutMs: number,
+  sourceDurationMs: number,
+): number[] {
+  if (!peaks.length || sourceDurationMs <= 0) return peaks;
+  const a = Math.max(0, Math.floor((sourceInMs / sourceDurationMs) * peaks.length));
+  const b = Math.min(peaks.length, Math.ceil((sourceOutMs / sourceDurationMs) * peaks.length));
+  return peaks.slice(a, Math.max(a + 1, b));
 }
 
 function stripExt(name: string): string {

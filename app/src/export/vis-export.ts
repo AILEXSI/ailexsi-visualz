@@ -20,6 +20,10 @@ export type VisExportOptions = {
   fps: number;
   durationMs: number;
   sceneId: string;
+  /** Scene at a timeline time — used after Cutter splits with different VIS functions. */
+  sceneAt?: (timelineMs: number) => string;
+  /** PCM / feature time (source file) for a timeline time after trims. */
+  featureTimeAt?: (timelineMs: number) => number;
   pcm: PcmBuffer | null;
   onProgress?: (ratio: number, frame: number, total: number) => void;
   signal?: AbortSignal;
@@ -102,10 +106,17 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
       hardwareAcceleration: "prefer-software",
     });
 
+    let lastScene = opts.sceneId;
     for (let i = 0; i < total; i++) {
       if (opts.signal?.aborted) throw new Error("Export cancelled");
       const timeMs = (i / fps) * 1000;
-      engine.setFeatures(extractor ? extractor.sample(timeMs) : silentFeatures(timeMs));
+      const scene = opts.sceneAt?.(timeMs) ?? opts.sceneId;
+      if (scene !== lastScene) {
+        engine.setScene(scene);
+        lastScene = scene;
+      }
+      const featMs = opts.featureTimeAt?.(timeMs) ?? timeMs;
+      engine.setFeatures(extractor ? extractor.sample(featMs) : silentFeatures(featMs));
       engine.step(dt);
       const frame = new VideoFrame(canvas, {
         timestamp: i * frameDurUs,

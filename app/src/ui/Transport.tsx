@@ -10,6 +10,9 @@ interface Props {
   onStep: (deltaMs: number) => void;
   onToggleLoop: () => void;
   onSeek: (ms: number) => void;
+  onIn: () => void;
+  onOut: () => void;
+  onSplit: () => void;
 }
 
 export function Transport(props: Props) {
@@ -40,6 +43,23 @@ export function Transport(props: Props) {
           onClick={props.onToggleLoop}
         >
           Loop
+        </button>
+      </div>
+      <div className="transport-group" data-group="edit">
+        <button type="button" data-testid="in-btn" onClick={props.onIn} title="Set IN (I)">
+          IN
+        </button>
+        <button type="button" data-testid="out-btn" onClick={props.onOut} title="Set OUT (O)">
+          OUT
+        </button>
+        <button
+          type="button"
+          data-testid="split-btn"
+          onClick={props.onSplit}
+          disabled={!props.project.audio.length}
+          title="Split at playhead (S)"
+        >
+          Split
         </button>
       </div>
       <div className="transport-group" data-group="time">
