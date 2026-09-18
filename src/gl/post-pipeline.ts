@@ -141,8 +141,16 @@ export type GlPost = {
   capabilities(): { hdr: boolean; label: HdrFormat["label"]; filaments: boolean };
 };
 
-export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
-  const glOrNull = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
+export function createGlPost(
+  canvas: HTMLCanvasElement,
+  opts?: { preserveDrawingBuffer?: boolean },
+): GlPost | null {
+  const glOrNull = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: opts?.preserveDrawingBuffer === true,
+  });
   if (!glOrNull) return null;
   const gl: WebGL2RenderingContext = glOrNull;
   let chosen = chooseHdrFormat(gl);

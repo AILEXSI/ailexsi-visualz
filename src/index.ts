@@ -19,6 +19,8 @@ import { createFeedbackState, stepFeedback } from "./gl/feedback";
 export interface VisualEngine {
   start(): void;
   stop(): void;
+  /** Paint one frame using the last `setFeatures` packet. Used by export / paused seek. */
+  step(dt?: number): void;
   setFeatures(features: AudioFeatures): void;
   setScene(sceneId: string): void;
   setParams(params: Partial<SceneParams>): void;
@@ -57,7 +59,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   sceneCanvas.width = Math.max(2, display.width || 1280);
   sceneCanvas.height = Math.max(2, display.height || 720);
 
-  const post = createGlPost(display);
+  const post = createGlPost(display, { preserveDrawingBuffer: options.preserveDrawingBuffer === true });
   const ctxOrNull = (post ? sceneCanvas : display).getContext("2d");
   if (!ctxOrNull) throw new Error("Could not get 2D context");
   const ctx: CanvasRenderingContext2D = ctxOrNull;
@@ -99,14 +101,12 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 
   initialScene?.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
 
-  function frame(now: number) {
-    if (!isPlaying) return;
-    const dt = Math.min((now - lastTime) / 1000, 0.05);
-    lastTime = now;
-    clock += dt;
+  function paint(dt: number) {
+    const clamped = Math.min(Math.max(dt, 0), 0.05);
+    clock += clamped;
     if (lastFeatures.beatPulse > 0) beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
     const energy = lastFeatures.rms + lastFeatures.bass;
-    beatPulseDecay = Math.max(0, beatPulseDecay - dt * (energy < 0.04 ? 8 : 3.2));
+    beatPulseDecay = Math.max(0, beatPulseDecay - clamped * (energy < 0.04 ? 8 : 3.2));
     const features: AudioFeatures = {
       ...lastFeatures,
       beatPulse: Math.max(lastFeatures.beatPulse, beatPulseDecay),
@@ -116,7 +116,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     ctx.fillStyle = `rgba(${rgb},0.22)`;
     ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
     if (scene) {
-      scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, dt);
+      scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, clamped);
     }
     const bloomBase = typeof params.bloom === "number" ? params.bloom : 0.8;
     const bloomAmt = bloomBase * (0.5 + features.rms * 0.35 + features.beatPulse * 0.4);
@@ -131,7 +131,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
           kick,
           drop: features.drop ?? 0,
           energy: features.rms * 0.5 + features.bass * 0.5,
-          dt,
+          dt: clamped,
         }),
         gpuFilaments: params.gpuFilaments !== false,
         songTimeMs: features.timeMs,
@@ -144,6 +144,13 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     } else {
       applyBloom(ctx, display, bloomAmt);
     }
+  }
+
+  function frame(now: number) {
+    if (!isPlaying) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    paint(dt);
     rafId = requestAnimationFrame(frame);
   }
 
@@ -157,6 +164,10 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     stop() {
       isPlaying = false;
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    },
+    step(dt = 1 / 30) {
+      lastTime = performance.now();
+      paint(dt);
     },
     setFeatures(features: AudioFeatures) {
       lastFeatures = features;
@@ -215,3 +226,19 @@ export { stepFeedback, createFeedbackState } from "./gl/feedback";
 export { chooseHdrFormat } from "./gl/hdr";
 export { filamentParams, filamentParamsBatch } from "./gl/filament-state";
 export { createFilamentPass } from "./gl/filaments";
+export {
+  createFeatureExtractor,
+  silentFeatures,
+} from "./audio/feature-extractor";
+export type { FeatureExtractor } from "./audio/feature-extractor";
+export { createOfflineFeatureExtractor, waveformPeaks } from "./audio/offline-extractor";
+export type { OfflineFeatureExtractor, PcmBuffer } from "./audio/offline-extractor";
+export {
+  selectAvcEncoderConfig,
+  avcEncoderCandidates,
+  DEFAULT_AVC_BITRATE,
+  unsupportedAvcEncoderMessage,
+} from "./export/avc";
+export type { AvcEncoderSelection } from "./export/avc";
+export { muxAvcToMp4 } from "./export/mp4";
+export type { AvcSample } from "./export/mp4";

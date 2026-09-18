@@ -1,12 +1,15 @@
 # Standalone Visualz
 
-Shippable now as a local page. Studio embed comes later via `createVisualEngine`.
+The product host is the Arranger (`npm run dev`). Library embed remains `createVisualEngine`.
 
 ## Run live
 
 ```bash
-# open in a browser (file:// is enough for the file picker)
-examples/demo.html
+npm run dev
+# Arranger at http://127.0.0.1:5173
+
+# library demo after npm run build
+# serve repo root → examples/engine-host.html
 ```
 
 Pick an MP3 → Play → scene: aurora / wave / kick-sun / bars.
