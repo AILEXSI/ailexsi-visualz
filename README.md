@@ -15,14 +15,14 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
 | Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed) |
 
-## Run the Arranger
+## Run the Arranger (web)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173`. Tauri webview uses `npm run web:dev` on **1421** (same as Resonance Studio 5.6).
 
 1. **Import** an audio file (mp3 / wav / …).
 2. A VIS clip appears on the gold lane; Resonance Wave (or the selected scene) is generated for the file duration.
@@ -30,6 +30,32 @@ Open `http://127.0.0.1:5173`.
 4. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
 
 Space = play/pause. Home = stop.
+
+## Windows EXE (local deploy)
+
+Same operator flow as Resonance Studio 5.6. Needs **current rustup stable** (1.85+; the locked crate graph uses edition2024), **WebView2**, and Node on the Windows machine. This Linux cloud VM does not produce the Windows binary.
+
+```bash
+npm install
+npm run tauri:exe
+```
+
+That runs `tauri build` then `scripts/copy-exe.ps1`, which copies the release binary to the **repo root** as:
+
+`AILEXSI Visualz.exe`
+
+Or double-click `BUILD_AND_RUN_VISUALZ.cmd` (build + start that EXE).
+
+| Mode | Command | What |
+|------|---------|------|
+| Web (Chrome) | `npm run dev` | Vite on `127.0.0.1:5173` |
+| Web (Tauri port) | `npm run web:dev` | Vite on `127.0.0.1:1421` |
+| Dev webview | `npx tauri dev` / `npm run tauri dev` | Loads Arranger from 1421 |
+| Standalone EXE | `npm run tauri:exe` | Release EXE at repo root |
+
+Icons are the first-party AILEXSI **愛** set copied from Resonance Studio V5.6 (`src-tauri/icons/`), not placeholders.
+
+Import still uses the web file picker. Export in the EXE uses the Tauri save dialog + fs write (WebView2 has no download shelf). Chrome keeps File System Access / `<a download>`.
 
 ## Engine library
 
@@ -81,3 +107,4 @@ npm run typecheck
 | Cinematic engine under preview | Implemented |
 | Vis-only H.264 export | Implemented (no AAC) |
 | Cutter / Mixer / multi-track | Intentionally absent |
+| Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

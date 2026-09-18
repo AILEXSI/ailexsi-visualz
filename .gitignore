@@ -3,3 +3,6 @@ dist
 app/dist
 *.log
 .DS_Store
+/src-tauri/target
+target/
+/AILEXSI Visualz.exe

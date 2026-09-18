@@ -9,6 +9,8 @@ import {
   type Project,
 } from "./model";
 import { exportVisOnly } from "./export/vis-export";
+import { isTauriRuntime } from "./tauri-runtime";
+import { pickTauriSavePath, writeTauriFile } from "./tauri-save";
 import { ExportDialog } from "./ui/ExportDialog";
 import { Preview } from "./ui/Preview";
 import { Timeline } from "./ui/Timeline";
@@ -173,20 +175,26 @@ export function App() {
     const name = `${project.name || "visualz"}.mp4`;
     type SaveHandle = { createWritable: () => Promise<{ write: (d: Blob) => Promise<void>; close: () => Promise<void> }> };
     let handle: SaveHandle | null = null;
-    const picker = (
-      window as unknown as {
-        showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle>;
-      }
-    ).showSaveFilePicker;
-    if (typeof picker === "function") {
-      try {
-        handle = await picker({
-          suggestedName: name,
-          types: [{ description: "MP4", accept: { "video/mp4": [".mp4"] } }],
-        });
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        handle = null;
+    let tauriPath: string | null = null;
+    if (isTauriRuntime()) {
+      tauriPath = await pickTauriSavePath(name);
+      if (!tauriPath) return;
+    } else {
+      const picker = (
+        window as unknown as {
+          showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle>;
+        }
+      ).showSaveFilePicker;
+      if (typeof picker === "function") {
+        try {
+          handle = await picker({
+            suggestedName: name,
+            types: [{ description: "MP4", accept: { "video/mp4": [".mp4"] } }],
+          });
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          handle = null;
+        }
       }
     }
 
@@ -207,12 +215,15 @@ export function App() {
       });
       const copy = new Uint8Array(result.bytes.byteLength);
       copy.set(result.bytes);
-      const blob = new Blob([copy.buffer], { type: "video/mp4" });
-      if (handle) {
+      if (tauriPath) {
+        await writeTauriFile(tauriPath, copy);
+      } else if (handle) {
+        const blob = new Blob([copy.buffer], { type: "video/mp4" });
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
       } else {
+        const blob = new Blob([copy.buffer], { type: "video/mp4" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = name;

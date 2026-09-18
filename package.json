@@ -7,20 +7,28 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "vite --config app/vite.config.ts",
+    "web:dev": "vite --config app/vite.config.ts --host 127.0.0.1 --port 1421 --strictPort",
+    "web:build": "vite build --config app/vite.config.ts",
     "build": "tsc && node tools/fix-esm.mjs",
     "build:app": "vite build --config app/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p app/tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tauri": "tauri",
+    "tauri:exe": "tauri build && powershell -ExecutionPolicy Bypass -File scripts/copy-exe.ps1"
   },
   "keywords": ["ailexsi", "visualizer", "audio-reactive", "webgl", "local-first", "arranger"],
   "author": "AILEXSI",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-fs": "^2.4.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.11.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",

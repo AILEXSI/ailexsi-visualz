@@ -1,0 +1,20 @@
+[package]
+name = "ailexsi-visualz"
+version = "0.4.0-arranger"
+description = "AILEXSI Visualz Arranger standalone"
+authors = ["AILEXSI"]
+edition = "2021"
+
+[lib]
+name = "ailexsi_visualz_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.2", features = [] }
+tauri-plugin-fs = "2.4"
+tauri-plugin-dialog = "2.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

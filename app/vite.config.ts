@@ -5,6 +5,8 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react()],
   root: path.resolve(__dirname),
+  base: "./",
+  clearScreen: false,
   resolve: {
     alias: {
       "@ailexsi/visualz": path.resolve(__dirname, "../src/index.ts"),

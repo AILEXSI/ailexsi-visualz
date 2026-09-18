@@ -152,7 +152,7 @@ This is the 1+1 model. VIS is a first-class track in the **product** UI even tho
 
 ## 5. Host shape (Phase 2)
 
-Vite + React app under `app/`, same stack family as 5.6, **no Tauri**. Imports the engine via `@ailexsi/visualz` → `src/`.
+Vite + React app under `app/`, same stack family as 5.6. Tauri 2 host under `src-tauri/` (Windows EXE / local deploy). Imports the engine via `@ailexsi/visualz` → `src/`.
 
 ```
 toolbar: Import · Export · scene · version
@@ -177,5 +177,22 @@ Shipped: **vis-only H.264 MP4** (picture from the cinematic engine). Audio is **
 ## 6. License / deps
 
 - Engine and muxer: first-party. No AGPL, no Butterchurn/projectM, no Mediabunny.
-- App deps: React, Vite, TypeScript — same family as 5.6.
+- App deps: React, Vite, TypeScript, Tauri 2 (`@tauri-apps/api` + dialog/fs) — same family as 5.6. No AGPL.
 - Studio remains a read-only reference.
+
+---
+
+## 7. Windows EXE (added after Phase 2)
+
+Mirrors 5.6 packaging, Visualz naming:
+
+| 5.6 | Visualz |
+|-----|---------|
+| `productName` AILEXSI Resonance Studio V5.6 | `AILEXSI Visualz` |
+| `com.ailexsi.resonance-studio-v5-5` | `com.ailexsi.visualz` |
+| `frontendDist` `../dist` | `../app/dist` |
+| `web:dev` :1421 | same |
+| `npm run tauri:exe` + `scripts/copy-exe.ps1` | same → repo-root `AILEXSI Visualz.exe` |
+| 愛 icons | copied from 5.6 (first-party) |
+
+Rust entry is **minimal** (dialog + fs plugins + `allow_user_paths`). No last-project / 64-track media scope. Chrome export stays FSA/`<a download>`; EXE export uses Tauri save + write (WebView2 has no download shelf). Import stays `<input type="file">`.
