@@ -123,8 +123,8 @@ function CutStrip({
           <span
             className="cut-strip-range"
             style={{
-              left: `${(inMs / durationMs) * 100}%`,
-              width: `${((outMs - inMs) / durationMs) * 100}%`,
+              left: `${Number.isFinite(inMs / durationMs) ? (inMs / durationMs) * 100 : 0}%`,
+              width: `${Number.isFinite((outMs - inMs) / durationMs) ? ((outMs - inMs) / durationMs) * 100 : 0}%`,
             }}
           />
         ) : null}

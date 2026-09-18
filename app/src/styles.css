@@ -282,7 +282,7 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
   padding: 0;
   border: none;
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.28);
   z-index: 3;
   cursor: ew-resize;
 }

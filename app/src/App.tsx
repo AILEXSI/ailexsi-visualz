@@ -390,7 +390,7 @@ export function App() {
   const activeScene = sceneAt(project, project.playheadMs);
 
   return (
-    <div className={`app screen-${screen}`} data-screen={screen}>
+    <div className={`app screen-${screen}`} data-screen={screen} translate="no">
       <Toolbar
         projectName={project.name}
         sceneId={activeScene}

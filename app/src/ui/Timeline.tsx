@@ -29,7 +29,8 @@ function ticks(durationMs: number, zoom: number, width: number): number[] {
 }
 
 function msToX(ms: number, zoom: number): number {
-  return (ms / 1000) * zoom;
+  const x = (ms / 1000) * zoom;
+  return Number.isFinite(x) ? x : 0;
 }
 
 export function Timeline(props: Props) {
