@@ -1,6 +1,6 @@
 {
   "productName": "AILEXSI Visualz",
-  "version": "0.4.0-arranger",
+  "version": "0.4.0",
   "identifier": "com.ailexsi.visualz",
   "build": {
     "frontendDist": "../app/dist",

@@ -4,7 +4,7 @@ Local-first **Arranger** for one audio file → cinematic visuals → vis-only H
 
 The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Resonance Wave** is the quality ruler. No Cutter, Mixer, or multi-track studio. No AGPL.
 
-**Version:** `0.4.0-arranger` — product cut documented in `docs/ARRANGER-VISUALZ-PLAN.md`.
+**Version:** `0.4.0` — Arranger product cut (`docs/ARRANGER-VISUALZ-PLAN.md`). Windows MSI requires a numeric version (no `-arranger` prerelease).
 
 ## What it is
 
@@ -40,7 +40,7 @@ npm install
 npm run tauri:exe
 ```
 
-That runs `tauri build` then `scripts/copy-exe.ps1`, which copies the release binary to the **repo root** as:
+That runs `tauri build` (app version **0.4.0**, MSI-safe) then `scripts/copy-exe.ps1`, which copies the release binary to the **repo root** as:
 
 `AILEXSI Visualz.exe`
 
