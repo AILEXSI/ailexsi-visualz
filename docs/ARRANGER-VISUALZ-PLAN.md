@@ -194,5 +194,6 @@ Mirrors 5.6 packaging, Visualz naming:
 | `web:dev` :1421 | same |
 | `npm run tauri:exe` + `scripts/copy-exe.ps1` | same → repo-root `AILEXSI Visualz.exe` |
 | 愛 icons | copied from 5.6 (first-party) |
+| App version | **`0.4.0`** (MSI-safe; Windows rejects non-numeric prereleases like `-arranger`) |
 
 Rust entry is **minimal** (dialog + fs plugins + `allow_user_paths`). No last-project / 64-track media scope. Chrome export stays FSA/`<a download>`; EXE export uses Tauri save + write (WebView2 has no download shelf). Import stays `<input type="file">`.
