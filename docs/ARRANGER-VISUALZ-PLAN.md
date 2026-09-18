@@ -211,8 +211,25 @@ Read-only Studio maps: `src/ui/screens/ScreenNav.tsx`, `src/core/timeline.ts` (`
 |--------|---------|
 | Top bar `ARRANGE \| CUTTER` + Tab | Same `ScreenNav` subset |
 | I / O / X, S split, Q / Alt+W ripple trim, `'` extract, `;` lift | Same keys on the 1+1 lanes (W = lift trim OUT, Alt+W ripple) |
+| IN/OUT loop region + Loop toggle + ruler handles | Same: Set Loop, green wash, drag IN/OUT |
 | Dual-write linked A/V | Audio + VIS clips stay paired by the same edit |
 | VIS scene picker + `nextSceneId` | Toolbar VIS prev / select / next and `[` / `]`; `createVisualEngine.setScene` |
 | Transition stack / V1/V2 | Skipped |
 
-Cutter panel: IN/OUT, Split, Trim IN/OUT, Ripple IN/OUT, Extract, Lift, plus a cut-strip of edit points. Arrange view keeps I/O/Split on the transport. Preview and export both use `sceneAt` / `featureTimeAt`.
+Cutter panel: IN/OUT, Split, Trim IN/OUT, Ripple IN/OUT, Extract, Lift, Set Loop, plus a cut-strip of edit points. Arrange view keeps I/O/Split/Loop on the transport. Preview and export both use `sceneAt` / `featureTimeAt`.
+
+### Loop setzen (Studio IN/OUT region)
+
+Studio: `inPointMs` / `outPointMs` **are** the loop region. Completing OUT (`applyOutAt`) sets `loop: true`. `playbackBounds` uses that window only while Loop is on; Loop off plays 0 → end. Ruler shows a green `in-out` wash with drag handles.
+
+Visualz (same 1+1 timeline):
+
+| Action | What |
+|--------|------|
+| IN then OUT (I / O, or right-click ruler twice) | Marks the region and **arms Loop** |
+| **Set Loop** | Enables Loop; fills a missing edge from playhead / file span if needed |
+| **Loop** toggle | Repeat the region vs play through |
+| Drag loop wash / handles | Move or resize IN/OUT (Studio `moveInOut`) |
+| Shift+Home / Shift+End | Jump to IN / OUT |
+
+No second loop-marker type. No mixer. Export still uses the full cut timeline, not the loop window.

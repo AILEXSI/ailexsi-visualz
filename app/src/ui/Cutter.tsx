@@ -12,6 +12,8 @@ interface Props {
   onIn: () => void;
   onOut: () => void;
   onClear: () => void;
+  onSetLoop: () => void;
+  onToggleLoop: () => void;
   onSplit: () => void;
   onTrimIn: (ripple: boolean) => void;
   onTrimOut: (ripple: boolean) => void;
@@ -39,10 +41,11 @@ export function Cutter(props: Props) {
         {range ? (
           <span className="cutter-pair" data-testid="cutter-range">
             {formatTimecode(range.outMs - range.inMs)} selected
+            {project.loop ? " · loop on" : ""}
           </span>
         ) : (
           <span className="cutter-empty" data-testid="cutter-empty">
-            {hasClips ? "Mark IN / OUT, then extract or lift." : "Import audio to cut."}
+            {hasClips ? "Mark IN / OUT to set the loop, then extract or lift." : "Import audio to cut."}
           </span>
         )}
       </div>
@@ -55,6 +58,18 @@ export function Cutter(props: Props) {
         </button>
         <button type="button" data-testid="cutter-clear-btn" onClick={props.onClear} disabled={!project.inPointMs && !project.outPointMs}>
           Clear
+        </button>
+        <button type="button" data-testid="cutter-set-loop-btn" onClick={props.onSetLoop} disabled={!hasClips}>
+          Set Loop
+        </button>
+        <button
+          type="button"
+          className={project.loop ? "active" : ""}
+          data-testid="cutter-loop-btn"
+          aria-pressed={project.loop}
+          onClick={props.onToggleLoop}
+        >
+          Loop
         </button>
         <button type="button" data-testid="cutter-split-btn" onClick={props.onSplit} disabled={!hasClips}>
           Split
@@ -84,6 +99,7 @@ export function Cutter(props: Props) {
         durationMs={Math.max(durationMs, 1)}
         inMs={project.inPointMs}
         outMs={project.outPointMs}
+        loopOn={project.loop}
         onSeek={props.onSeek}
       />
     </div>
@@ -96,6 +112,7 @@ function CutStrip({
   durationMs,
   inMs,
   outMs,
+  loopOn,
   onSeek,
 }: {
   points: number[];
@@ -103,6 +120,7 @@ function CutStrip({
   durationMs: number;
   inMs: number | null;
   outMs: number | null;
+  loopOn: boolean;
   onSeek: (ms: number) => void;
 }) {
   const nearest = points.reduce((best, ms) =>
@@ -121,7 +139,7 @@ function CutStrip({
       <div className="cut-strip-track">
         {inMs != null && outMs != null && outMs > inMs ? (
           <span
-            className="cut-strip-range"
+            className={`cut-strip-range${loopOn ? " loop-on" : ""}`}
             style={{
               left: `${Number.isFinite(inMs / durationMs) ? (inMs / durationMs) * 100 : 0}%`,
               width: `${Number.isFinite((outMs - inMs) / durationMs) ? ((outMs - inMs) / durationMs) * 100 : 0}%`,

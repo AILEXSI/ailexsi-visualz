@@ -14,6 +14,7 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 | Screens | **ARRANGE** and **CUTTER** (Studio top-bar subset; Tab to switch) |
 | Import | One audio file → vis clip generated for the same span |
 | Cutter | IN/OUT, Split, trim / ripple trim, extract, lift — audio + VIS stay linked |
+| Loop | IN/OUT **is** the loop region. Set Loop (or complete OUT) arms it; Loop toggles repeat |
 | VIS | Cycle or pick cinematic scenes (Hero / resonance-wave and the rest). Preview + export follow the clip under the playhead |
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
 | Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed) |
@@ -31,15 +32,19 @@ Open `http://127.0.0.1:5173`. Tauri webview uses `npm run web:dev` on **1421** (
 2. A VIS clip appears on the gold lane; Resonance Wave (or the selected scene) is generated for the file duration.
 3. **Play** — visuals follow the song. Seek on the ruler or lanes.
 4. Switch **ARRANGE | CUTTER**. In Cutter: mark **IN** / **OUT**, **Split**, trim or **Extract** (ripple). Audio and VIS cut together.
-5. Cycle visual functions with **◀ ▶** (or `[` `]`) or the VIS dropdown. The clip under the playhead changes; export uses `sceneAt` for each frame.
-6. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
+5. **Loop setzen:** mark **IN** then **OUT** (or **Set Loop**, or right-click the ruler twice). A green range appears on the ruler. **Loop** on = playback repeats that region; Loop off plays through. Shift+Home / Shift+End jump to IN / OUT. Preview keeps the selected visual function.
+6. Cycle visual functions with **◀ ▶** (or `[` `]`) or the VIS dropdown. The clip under the playhead changes; export uses `sceneAt` for each frame.
+7. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
 
 | Key | Action |
 |-----|--------|
 | Space | Play / pause |
 | Home | Stop |
 | Tab | Arrange ↔ Cutter |
-| I / O / X | Set IN, set OUT, clear marks |
+| I / O / X | Set IN, set OUT (completes loop), clear marks |
+| Set Loop / Loop | Arm the IN/OUT region / toggle repeat |
+| Shift+Home / Shift+End | Playhead to IN / OUT |
+| Right-click ruler | IN, then OUT (loop range) |
 | S | Split at playhead |
 | Q / W / Alt+W | Ripple trim IN, trim OUT, ripple trim OUT |
 | ' / ; | Extract range, lift range |
@@ -121,6 +126,7 @@ npm run typecheck
 | Cinematic engine under preview | Implemented |
 | Vis-only H.264 export | Implemented (no AAC) |
 | Cutter (1+1 trim / split / extract) | Implemented (not Studio V1/V2 transitions) |
+| Loop setzen (IN/OUT region + toggle) | Implemented |
 | VIS function cycle | Implemented (`createVisualEngine.setScene`) |
 | Mixer / multi-track | Intentionally absent |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

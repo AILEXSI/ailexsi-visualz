@@ -10,12 +10,17 @@ import {
   extractRange,
   featureTimeAt,
   liftRange,
+  loopRangeOf,
   placeAudio,
+  playbackBounds,
   projectDurationMs,
   sceneAt,
   setInPoint,
+  setLoopHere,
+  setLoopRange,
   setOutPoint,
   setScene,
+  toggleLoop,
   sourceTimeAt,
   splitAtPlayhead,
   trimEdgeAt,
@@ -113,8 +118,10 @@ export function App() {
       return;
     }
     const audio = audioRef.current;
+    const bounds = playbackBounds(p);
     let start = p.playheadMs;
-    if (start >= projectDurationMs(p) - 10) start = 0;
+    if (p.loop && (start < bounds.startMs || start >= bounds.endMs - 10)) start = bounds.startMs;
+    else if (start >= bounds.endMs - 10) start = bounds.startMs;
     const clip = clipAtTime(p.audio, start) ?? nextClipAfter(p.audio, start);
     if (!clip) {
       setStatus("Nothing to play — timeline is empty");
@@ -144,7 +151,7 @@ export function App() {
       audio.currentTime = 0;
     }
     setPlaying(false);
-    setProject((p) => ({ ...p, playheadMs: 0 }));
+    setProject((p) => ({ ...p, playheadMs: playbackBounds(p).startMs }));
   }, []);
 
   useEffect(() => {
@@ -155,12 +162,9 @@ export function App() {
     const tick = () => {
       const p = projectRef.current;
       const clip = clipAtTime(p.audio, p.playheadMs);
-      const loopStart = p.loop && p.inPointMs != null && p.outPointMs != null && p.outPointMs > p.inPointMs
-        ? p.inPointMs
-        : 0;
-      const loopEnd = p.loop && p.inPointMs != null && p.outPointMs != null && p.outPointMs > p.inPointMs
-        ? p.outPointMs
-        : projectDurationMs(p);
+      const bounds = playbackBounds(p);
+      const loopStart = bounds.startMs;
+      const loopEnd = bounds.endMs;
 
       if (!clip) {
         const nxt = nextClipAfter(p.audio, p.playheadMs + 0.5);
@@ -235,20 +239,31 @@ export function App() {
         e.preventDefault();
         if (playing) pause();
         else void play();
-      } else if (e.code === "Home") {
+      } else if (e.code === "Home" && !e.shiftKey) {
         e.preventDefault();
         stop();
       } else if (e.code === "Tab") {
         e.preventDefault();
         setScreen((s) => cycleProductionScreen(s, e.shiftKey ? -1 : 1));
+      } else if (e.key === "Home" && e.shiftKey) {
+        e.preventDefault();
+        const inn = projectRef.current.inPointMs;
+        if (inn != null) seek(inn);
+      } else if (e.key === "End" && e.shiftKey) {
+        e.preventDefault();
+        const out = projectRef.current.outPointMs;
+        if (out != null) seek(out);
       } else if (e.key === "i" || e.key === "I") {
         e.preventDefault();
         setProject((p) => setInPoint(p));
         setStatus("IN");
       } else if (e.key === "o" || e.key === "O") {
         e.preventDefault();
-        setProject((p) => setOutPoint(p));
-        setStatus("OUT");
+        setProject((p) => {
+          const next = setOutPoint(p);
+          setStatus(loopRangeOf(next) ? "Loop range set" : "OUT");
+          return next;
+        });
       } else if (e.key === "x" || e.key === "X") {
         e.preventDefault();
         setProject((p) => clearInOut(p));
@@ -428,8 +443,16 @@ export function App() {
             project={project}
             onSeek={seek}
             onIn={() => { setProject((p) => setInPoint(p)); setStatus("IN"); }}
-            onOut={() => { setProject((p) => setOutPoint(p)); setStatus("OUT"); }}
+            onOut={() => {
+              setProject((p) => {
+                const next = setOutPoint(p);
+                setStatus(loopRangeOf(next) ? "Loop range set" : "OUT");
+                return next;
+              });
+            }}
             onClear={() => { setProject((p) => clearInOut(p)); setStatus("IN/OUT cleared"); }}
+            onSetLoop={() => { setProject((p) => setLoopHere(p)); setStatus("Loop range set"); }}
+            onToggleLoop={() => setProject((p) => toggleLoop(p))}
             onSplit={() => applyCut((p) => splitAtPlayhead(p), "Split")}
             onTrimIn={(ripple) => applyCut((p) => trimInToPlayhead(p, ripple), ripple ? "Ripple trim IN" : "Trim IN")}
             onTrimOut={(ripple) => applyCut((p) => trimOutToPlayhead(p, ripple), ripple ? "Ripple trim OUT" : "Trim OUT")}
@@ -445,10 +468,18 @@ export function App() {
           onPause={pause}
           onStop={stop}
           onStep={(d) => seek(project.playheadMs + d)}
-          onToggleLoop={() => setProject((p) => ({ ...p, loop: !p.loop }))}
+          onToggleLoop={() => setProject((p) => toggleLoop(p))}
+          onSetLoop={() => { setProject((p) => setLoopHere(p)); setStatus("Loop range set"); }}
           onSeek={seek}
           onIn={() => { setProject((p) => setInPoint(p)); setStatus("IN"); }}
-          onOut={() => { setProject((p) => setOutPoint(p)); setStatus("OUT"); }}
+          onOut={() => {
+            setProject((p) => {
+              const next = setOutPoint(p);
+              setStatus(loopRangeOf(next) ? "Loop range set" : "OUT");
+              return next;
+            });
+          }}
+          onClear={() => { setProject((p) => clearInOut(p)); setStatus("IN/OUT cleared"); }}
           onSplit={() => applyCut((p) => splitAtPlayhead(p), "Split")}
         />
         <Timeline
@@ -459,6 +490,24 @@ export function App() {
           onZoom={(z) => setProject((p) => ({ ...p, zoomPxPerSec: z }))}
           onTrimEdge={(edge, ms, ripple) => {
             applyCut((p) => trimEdgeAt(p, edge, ms, ripple), ripple ? "Ripple trim" : "Trim");
+          }}
+          onLoopIn={(ms) => setProject((p) => setInPoint(p, ms))}
+          onLoopOut={(ms) => setProject((p) => setOutPoint(p, ms))}
+          onLoopRange={(a, b) => setProject((p) => setLoopRange(p, a, b))}
+          onRulerMark={(ms) => {
+            setProject((p) => {
+              if (loopRangeOf(p)) {
+                setStatus("IN");
+                return setInPoint({ ...p, inPointMs: null, outPointMs: null, playheadMs: ms }, ms);
+              }
+              if (p.inPointMs == null) {
+                setStatus("IN");
+                return setInPoint({ ...p, playheadMs: ms }, ms);
+              }
+              const next = setOutPoint({ ...p, playheadMs: ms }, ms);
+              setStatus(loopRangeOf(next) ? "Loop range set" : "OUT");
+              return next;
+            });
           }}
         />
       </div>

@@ -12,6 +12,7 @@
   --audio-sel: #45b085;
   --danger: #e06c75;
   --playhead: #ff5d6c;
+  --in: #6ee7b7;
   --font: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   --mono: "Cascadia Mono", "SF Mono", ui-monospace, monospace;
   font-family: var(--font);
@@ -146,6 +147,25 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
 .transport-group:last-child { border-right: none; }
 .timecode { font-family: var(--mono); font-size: 16px; letter-spacing: 0.04em; }
 .timecode.muted, .timecode-sep { color: var(--muted); font-size: 13px; }
+.transport-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.transport-marks button { padding: 2px 7px; font-size: 11px; }
+.loop-badge {
+  color: #052e1a;
+  background: var(--in);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+button.loop-armed { border-color: var(--in); color: var(--in); }
 
 .timeline {
   --lane-label-px: 80px;
@@ -264,16 +284,37 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
   pointer-events: none;
   z-index: 4;
 }
-.mark-in { background: #7aa2ff; }
-.mark-out { background: #d4b45a; }
-.mark-range {
+.mark-in { background: var(--in); }
+.mark-out { background: var(--accent); }
+.in-out {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(212, 180, 90, 0.12);
+  background: rgba(110, 231, 183, 0.1);
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
+.in-out.interactive {
+  pointer-events: auto;
+  cursor: grab;
+  background: rgba(110, 231, 183, 0.16);
+}
+.in-out.loop-on { background: rgba(110, 231, 183, 0.22); }
+.loop-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  margin-left: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--in);
+  cursor: ew-resize;
+  z-index: 4;
+}
+.loop-handle.out { background: var(--accent); }
+.cut-strip-range.loop-on { background: rgba(110, 231, 183, 0.35); }
 .clip-handle {
   position: absolute;
   top: 0;

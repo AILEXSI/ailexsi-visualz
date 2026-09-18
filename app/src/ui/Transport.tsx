@@ -1,4 +1,4 @@
-import { FRAME_MS, formatTimecode, type Project } from "../model";
+import { FRAME_MS, formatTimecode, loopRangeOf, type Project } from "../model";
 
 interface Props {
   project: Project;
@@ -9,13 +9,17 @@ interface Props {
   onStop: () => void;
   onStep: (deltaMs: number) => void;
   onToggleLoop: () => void;
+  onSetLoop: () => void;
   onSeek: (ms: number) => void;
   onIn: () => void;
   onOut: () => void;
+  onClear: () => void;
   onSplit: () => void;
 }
 
 export function Transport(props: Props) {
+  const range = loopRangeOf(props.project);
+  const loopOn = props.project.loop;
   return (
     <div className="transport" data-testid="transport">
       <div className="transport-group" data-group="play">
@@ -38,19 +42,38 @@ export function Transport(props: Props) {
       <div className="transport-group" data-group="loop">
         <button
           type="button"
-          className={props.project.loop ? "active" : ""}
+          className={loopOn ? "active loop-armed" : ""}
           data-testid="loop-btn"
+          aria-pressed={loopOn}
+          title={loopOn ? "Loop on — playback repeats the IN/OUT region" : "Loop off"}
           onClick={props.onToggleLoop}
         >
           Loop
+        </button>
+        <button
+          type="button"
+          data-testid="set-loop-btn"
+          title="Set loop region (IN/OUT) and enable Loop"
+          onClick={props.onSetLoop}
+        >
+          Set Loop
         </button>
       </div>
       <div className="transport-group" data-group="edit">
         <button type="button" data-testid="in-btn" onClick={props.onIn} title="Set IN (I)">
           IN
         </button>
-        <button type="button" data-testid="out-btn" onClick={props.onOut} title="Set OUT (O)">
+        <button type="button" data-testid="out-btn" onClick={props.onOut} title="Set OUT (O) — completes loop">
           OUT
+        </button>
+        <button
+          type="button"
+          data-testid="clear-btn"
+          onClick={props.onClear}
+          disabled={props.project.inPointMs == null && props.project.outPointMs == null}
+          title="Clear IN/OUT (X)"
+        >
+          Clear
         </button>
         <button
           type="button"
@@ -69,6 +92,36 @@ export function Transport(props: Props) {
         <span className="timecode-sep">/</span>
         <span className="timecode muted" data-testid="duration">
           {formatTimecode(props.durationMs)}
+        </span>
+        <span className="transport-marks">
+          <button
+            type="button"
+            data-testid="goto-in"
+            title="Go to IN"
+            disabled={props.project.inPointMs == null}
+            onClick={() => {
+              if (props.project.inPointMs != null) props.onSeek(props.project.inPointMs);
+            }}
+          >
+            IN {props.project.inPointMs == null ? "—" : formatTimecode(props.project.inPointMs)}
+          </button>
+          <span aria-hidden="true">·</span>
+          <button
+            type="button"
+            data-testid="goto-out"
+            title="Go to OUT"
+            disabled={props.project.outPointMs == null}
+            onClick={() => {
+              if (props.project.outPointMs != null) props.onSeek(props.project.outPointMs);
+            }}
+          >
+            OUT {props.project.outPointMs == null ? "—" : formatTimecode(props.project.outPointMs)}
+          </button>
+          {range && loopOn ? (
+            <span className="loop-badge" data-testid="loop-badge">
+              LOOP {formatTimecode(range.outMs - range.inMs)}
+            </span>
+          ) : null}
         </span>
       </div>
     </div>

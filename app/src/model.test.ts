@@ -6,14 +6,19 @@ import {
   extractRange,
   featureTimeAt,
   liftRange,
+  moveLoopRange,
   placeAudio,
+  playbackBounds,
   projectDurationMs,
   sceneAt,
   setInPoint,
+  setLoopHere,
+  setLoopRange,
   setOutPoint,
   setScene,
   sourceTimeAt,
   splitAtPlayhead,
+  toggleLoop,
   trimInToPlayhead,
   trimOutToPlayhead,
 } from "./model";
@@ -174,3 +179,37 @@ describe("cutter 1+1", () => {
 function rippleReadySplit() {
   return splitAtPlayhead({ ...placed(), playheadMs: 5_000 });
 }
+
+describe("loop setzen", () => {
+  it("completing IN then OUT arms loop", () => {
+    const marked = setOutPoint(setInPoint({ ...placed(), playheadMs: 1_000 }, 1_000), 4_000);
+    expect(marked.inPointMs).toBe(1_000);
+    expect(marked.outPointMs).toBe(4_000);
+    expect(marked.loop).toBe(true);
+    expect(playbackBounds(marked)).toEqual({ startMs: 1_000, endMs: 4_000 });
+  });
+
+  it("loop off plays the full timeline; marks stay", () => {
+    const ranged = setLoopRange(placed(), 2_000, 5_000);
+    const off = toggleLoop(ranged);
+    expect(off.loop).toBe(false);
+    expect(off.inPointMs).toBe(2_000);
+    expect(off.outPointMs).toBe(5_000);
+    expect(playbackBounds(off)).toEqual({ startMs: 0, endMs: 12_500 });
+  });
+
+  it("setLoopHere fills from playhead to end when unmarked", () => {
+    const next = setLoopHere({ ...placed(), playheadMs: 3_000 });
+    expect(next.loop).toBe(true);
+    expect(next.inPointMs).toBe(3_000);
+    expect(next.outPointMs).toBe(12_500);
+  });
+
+  it("moveLoopRange keeps duration", () => {
+    const ranged = setLoopRange(placed(), 1_000, 3_000);
+    const moved = moveLoopRange(ranged, 500);
+    expect(moved.error).toBeUndefined();
+    expect(moved.project.inPointMs).toBe(1_500);
+    expect(moved.project.outPointMs).toBe(3_500);
+  });
+});

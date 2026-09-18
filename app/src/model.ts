@@ -149,6 +149,79 @@ export function editRangeOf(project: Project): { inMs: number; outMs: number } |
   return { inMs, outMs };
 }
 
+/** IN/OUT window used as the loop region (Studio). */
+export function loopRangeOf(project: Project): { inMs: number; outMs: number } | null {
+  return editRangeOf(project);
+}
+
+/**
+ * Transport window. IN/OUT bound playback only while Loop is on (Studio playback.ts).
+ * Loop off plays 0 → timeline end; marks stay visible but do not stop play.
+ */
+export function playbackBounds(project: Project): { startMs: number; endMs: number } {
+  const dur = projectDurationMs(project);
+  if (project.loop) {
+    const range = loopRangeOf(project);
+    if (range) return { startMs: range.inMs, endMs: Math.max(range.inMs + FRAME_MS, range.outMs) };
+    return { startMs: 0, endMs: Math.max(FRAME_MS, dur) };
+  }
+  return { startMs: 0, endMs: Math.max(0, dur) };
+}
+
+export function toggleLoop(project: Project): Project {
+  return { ...project, loop: !project.loop };
+}
+
+/** Set IN/OUT as a loop region and turn Loop on. */
+export function setLoopRange(project: Project, aMs: number, bMs: number): Project {
+  const a = Math.max(0, snapMs(aMs));
+  const b = Math.max(0, snapMs(bMs));
+  const inMs = Math.min(a, b);
+  const outMs = Math.max(a, b);
+  if (outMs <= inMs) {
+    return { ...project, inPointMs: inMs, outPointMs: inMs + Math.round(FRAME_MS), loop: true };
+  }
+  return { ...project, inPointMs: inMs, outPointMs: outMs, loop: true };
+}
+
+/**
+ * Operator "Loop setzen": enable loop on the current IN/OUT, or fill the
+ * missing edge from the playhead / timeline so a region exists.
+ */
+export function setLoopHere(project: Project): Project {
+  const range = loopRangeOf(project);
+  if (range) return { ...project, loop: true };
+  const dur = projectDurationMs(project);
+  if (project.inPointMs != null) {
+    const out = project.playheadMs > project.inPointMs ? project.playheadMs : Math.max(dur, project.inPointMs + FRAME_MS);
+    return setLoopRange(project, project.inPointMs, out);
+  }
+  if (project.outPointMs != null) {
+    const inn = project.playheadMs < project.outPointMs ? project.playheadMs : 0;
+    return setLoopRange(project, inn, project.outPointMs);
+  }
+  if (dur <= 0) return { ...project, loop: true };
+  if (project.playheadMs > 0 && project.playheadMs < dur) {
+    return setLoopRange(project, project.playheadMs, dur);
+  }
+  return setLoopRange(project, 0, dur);
+}
+
+export function moveLoopRange(
+  project: Project,
+  deltaMs: number,
+): { project: Project; error?: string } {
+  const range = loopRangeOf(project);
+  if (!range) return { project, error: "No loop range" };
+  const span = range.outMs - range.inMs;
+  const inMs = Math.max(0, snapMs(range.inMs + deltaMs));
+  return { project: { ...project, inPointMs: inMs, outPointMs: inMs + span } };
+}
+
+function armLoopIfComplete(project: Project): Project {
+  return loopRangeOf(project) ? { ...project, loop: true } : project;
+}
+
 export function editPointsOf(project: Project): number[] {
   const pts = new Set<number>([0, projectDurationMs(project)]);
   for (const c of project.audio) {
@@ -237,17 +310,17 @@ export function cycleScene(project: Project, sceneIds: readonly string[], delta:
 export function setInPoint(project: Project, timeMs = project.playheadMs): Project {
   const t = Math.max(0, snapMs(timeMs));
   if (project.outPointMs != null && t > project.outPointMs) {
-    return { ...project, inPointMs: project.outPointMs, outPointMs: t };
+    return armLoopIfComplete({ ...project, inPointMs: project.outPointMs, outPointMs: t });
   }
-  return { ...project, inPointMs: t };
+  return armLoopIfComplete({ ...project, inPointMs: t });
 }
 
 export function setOutPoint(project: Project, timeMs = project.playheadMs): Project {
   const t = Math.max(0, snapMs(timeMs));
   if (project.inPointMs != null && t < project.inPointMs) {
-    return { ...project, inPointMs: t, outPointMs: project.inPointMs };
+    return armLoopIfComplete({ ...project, inPointMs: t, outPointMs: project.inPointMs });
   }
-  return { ...project, outPointMs: t };
+  return armLoopIfComplete({ ...project, outPointMs: t });
 }
 
 export function clearInOut(project: Project): Project {

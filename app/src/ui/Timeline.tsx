@@ -15,6 +15,10 @@ interface Props {
   onSeek: (ms: number) => void;
   onZoom: (pxPerSec: number) => void;
   onTrimEdge?: (edge: "in" | "out", nextEdgeMs: number, ripple: boolean) => void;
+  onLoopIn?: (ms: number) => void;
+  onLoopOut?: (ms: number) => void;
+  onLoopRange?: (inMs: number, outMs: number) => void;
+  onRulerMark?: (ms: number) => void;
 }
 
 const LANE_MIN_MS = 8_000;
@@ -41,7 +45,7 @@ export function Timeline(props: Props) {
   const playX = msToX(project.playheadMs, zoom);
 
   const seekFromEvent = (e: MouseEvent<HTMLElement>) => {
-    if ((e.target as HTMLElement).closest("[data-edge]")) return;
+    if ((e.target as HTMLElement).closest("[data-edge], .loop-handle, .in-out")) return;
     const body = e.currentTarget;
     const rect = body.getBoundingClientRect();
     const x = e.clientX - rect.left + body.scrollLeft;
@@ -79,14 +83,32 @@ export function Timeline(props: Props) {
       </div>
       <div className="ruler">
         <div className="ruler-gutter" />
-        <div className="ruler-body" data-testid="ruler" onClick={seekFromEvent}>
+        <div
+          className="ruler-body"
+          data-testid="ruler"
+          onClick={seekFromEvent}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            const body = e.currentTarget;
+            const rect = body.getBoundingClientRect();
+            const x = e.clientX - rect.left + body.scrollLeft;
+            props.onRulerMark?.((x / zoom) * 1000);
+          }}
+        >
           <div className="ruler-inner" style={{ width }}>
             {ticks(durationMs, zoom, width).map((t) => (
               <span key={t} className="ruler-tick" style={{ left: msToX(t, zoom) }}>
                 {formatTimecode(t).slice(0, 5)}
               </span>
             ))}
-            <InOutMarks project={project} zoom={zoom} />
+            <LoopOverlay
+              project={project}
+              zoom={zoom}
+              interactive
+              onLoopIn={props.onLoopIn}
+              onLoopOut={props.onLoopOut}
+              onLoopRange={props.onLoopRange}
+            />
             <span className="playhead" style={{ left: playX }} />
           </div>
         </div>
@@ -110,7 +132,7 @@ export function Timeline(props: Props) {
               ) : (
                 <div className="lane-empty">Import audio — visuals generate here</div>
               )}
-              <InOutMarks project={project} zoom={zoom} />
+              <LoopOverlay project={project} zoom={zoom} />
               <span className="playhead" style={{ left: playX }} />
             </div>
           </div>
@@ -135,7 +157,7 @@ export function Timeline(props: Props) {
               ) : (
                 <div className="lane-empty">Drop or import one audio file</div>
               )}
-              <InOutMarks project={project} zoom={zoom} />
+              <LoopOverlay project={project} zoom={zoom} />
               <span className="playhead" style={{ left: playX }} />
             </div>
           </div>
@@ -145,23 +167,104 @@ export function Timeline(props: Props) {
   );
 }
 
-function InOutMarks({ project, zoom }: { project: Project; zoom: number }) {
+function LoopOverlay({
+  project,
+  zoom,
+  interactive = false,
+  onLoopIn,
+  onLoopOut,
+  onLoopRange,
+}: {
+  project: Project;
+  zoom: number;
+  interactive?: boolean;
+  onLoopIn?: (ms: number) => void;
+  onLoopOut?: (ms: number) => void;
+  onLoopRange?: (inMs: number, outMs: number) => void;
+}) {
+  const inMs = project.inPointMs;
+  const outMs = project.outPointMs;
+  const hasRange = inMs != null && outMs != null && outMs > inMs;
+  const left = hasRange ? msToX(inMs, zoom) : inMs != null ? msToX(inMs, zoom) : 0;
+  const width = hasRange ? msToX(outMs - inMs, zoom) : 0;
+
+  const startHandle = (
+    edge: "in" | "out",
+    origin: number,
+    apply: ((ms: number) => void) | undefined,
+  ) => (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!apply) return;
+    const originX = e.clientX;
+    const move = (ev: globalThis.MouseEvent) => {
+      const next = origin + ((ev.clientX - originX) / zoom) * 1000;
+      apply(next);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
+  const startMove = (e: MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!onLoopRange || inMs == null || outMs == null) return;
+    const originX = e.clientX;
+    const originIn = inMs;
+    const span = outMs - inMs;
+    const move = (ev: globalThis.MouseEvent) => {
+      const nextIn = Math.max(0, originIn + ((ev.clientX - originX) / zoom) * 1000);
+      onLoopRange(nextIn, nextIn + span);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+
   return (
     <>
-      {project.inPointMs != null ? (
-        <span className="mark mark-in" data-testid="mark-in" style={{ left: msToX(project.inPointMs, zoom) }} />
+      {inMs != null ? (
+        <span className="mark mark-in" data-testid="mark-in" style={{ left: msToX(inMs, zoom) }} />
       ) : null}
-      {project.outPointMs != null ? (
-        <span className="mark mark-out" data-testid="mark-out" style={{ left: msToX(project.outPointMs, zoom) }} />
+      {outMs != null ? (
+        <span className="mark mark-out" data-testid="mark-out" style={{ left: msToX(outMs, zoom) }} />
       ) : null}
-      {project.inPointMs != null && project.outPointMs != null && project.outPointMs > project.inPointMs ? (
-        <span
-          className="mark-range"
-          style={{
-            left: msToX(project.inPointMs, zoom),
-            width: msToX(project.outPointMs - project.inPointMs, zoom),
-          }}
+      {hasRange ? (
+        <div
+          className={`in-out${interactive ? " interactive" : ""}${project.loop ? " loop-on" : ""}`}
+          data-testid={interactive ? "loop-range" : undefined}
+          style={{ left, width }}
+          onMouseDown={interactive ? startMove : undefined}
         />
+      ) : null}
+      {interactive && hasRange ? (
+        <>
+          <button
+            type="button"
+            className="loop-handle in"
+            data-testid="loop-handle-in"
+            title="Loop IN"
+            style={{ left }}
+            onMouseDown={startHandle("in", inMs, onLoopIn)}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="loop-handle out"
+            data-testid="loop-handle-out"
+            title="Loop OUT"
+            style={{ left: left + width }}
+            onMouseDown={startHandle("out", outMs, onLoopOut)}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </>
       ) : null}
     </>
   );
