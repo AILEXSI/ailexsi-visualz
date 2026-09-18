@@ -170,6 +170,26 @@ export function App() {
       setExportError("Import audio first — nothing to export");
       return;
     }
+    const name = `${project.name || "visualz"}.mp4`;
+    type SaveHandle = { createWritable: () => Promise<{ write: (d: Blob) => Promise<void>; close: () => Promise<void> }> };
+    let handle: SaveHandle | null = null;
+    const picker = (
+      window as unknown as {
+        showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle>;
+      }
+    ).showSaveFilePicker;
+    if (typeof picker === "function") {
+      try {
+        handle = await picker({
+          suggestedName: name,
+          types: [{ description: "MP4", accept: { "video/mp4": [".mp4"] } }],
+        });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        handle = null;
+      }
+    }
+
     setExporting(true);
     setExportError(null);
     setExportProgress("Starting encoder…");
@@ -188,14 +208,7 @@ export function App() {
       const copy = new Uint8Array(result.bytes.byteLength);
       copy.set(result.bytes);
       const blob = new Blob([copy.buffer], { type: "video/mp4" });
-      const name = `${project.name || "visualz"}.mp4`;
-      const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle> })
-        .showSaveFilePicker;
-      if (typeof picker === "function") {
-        const handle = await picker({
-          suggestedName: name,
-          types: [{ description: "MP4", accept: { "video/mp4": [".mp4"] } }],
-        });
+      if (handle) {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
@@ -203,7 +216,9 @@ export function App() {
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = name;
+        document.body.appendChild(a);
         a.click();
+        a.remove();
         URL.revokeObjectURL(a.href);
       }
       setExportProgress(`Fertig · ${result.frames} frames · ${result.codec} · ${result.bytes.byteLength} bytes`);
