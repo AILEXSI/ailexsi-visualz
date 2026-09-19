@@ -38,7 +38,7 @@ export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
     displayName: "Terrain Gold",
     shortName: "Terrain",
     family: "LEXI Terrain Gold",
-    description: "Gold particle dunes, horizon mountains, fog — not Kaleido",
+    description: "Continuous gold dunes, depth fog — not Kaleido / not line soup",
     renderer: "lexi-terrain-gold",
     mode: "loop-seamless",
     params: LEXI_TERRAIN_GOLD_DEFAULTS,
