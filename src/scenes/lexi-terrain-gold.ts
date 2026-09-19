@@ -1,7 +1,8 @@
 /**
- * LEXI Terrain Gold — quality language (Pass 1 landscape + Pass 2 depth/atmosphere).
+ * LEXI Terrain Gold — Pass 1+2 look, 100% audio-driven motion.
  * Gold Terrain is the reference, not a texture to copy. Not Kaleido / radar / scope.
- * Pass 3+ (kick fireworks, transient bursts) is deferred. Audio is a light field influence.
+ * timeMs is a decay/integration clock only — never dune travel or isoline march.
+ * Pass 3+ (kick fireworks, mid/treble particles) is deferred.
  */
 
 import type { Scene, SceneContext, SceneParams } from "../types";
@@ -48,10 +49,105 @@ function num(v: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function terrainPhase(timeSec: number, periodSec = LEXI_TERRAIN_GOLD_PERIOD_SEC): number {
+/** Fract wrap only. Not a wall-clock travel driver — do not call with timeSec for motion. */
+export function terrainPhase(u: number, periodSec = 1): number {
   const T = Math.max(1e-6, periodSec);
-  const u = timeSec / T;
-  return u - Math.floor(u);
+  const x = u / T;
+  return x - Math.floor(x);
+}
+
+export type TerrainDeform = {
+  bass?: number;
+  kickEnv?: number;
+};
+
+export type TerrainMotionState = {
+  u: number;
+  gate: number;
+  kickEnv: number;
+  lastTimeMs: number | null;
+};
+
+export function createTerrainMotionState(u = 0): TerrainMotionState {
+  return { u, gate: 0, kickEnv: 0, lastTimeMs: null };
+}
+
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n));
+}
+
+/**
+ * motionGate formula (raw, then one-pole smoothed in stepTerrainMotion):
+ *   sub     := features.bass   (no dedicated sub band on AudioFeatures)
+ *   kickIn  := features.kick ?? features.beatPulse ?? 0
+ *   kickEnv := max(kickIn, prevKickEnv * exp(-dt / 0.16))   // timeMs → dt for decay only
+ *   raw     := clamp01(rms * 0.45 + sub * 0.40 + kickEnv * 0.55)
+ *   gate   += (raw - gate) * (1 - exp(-dt / 0.07))
+ * Gate ~ 0 at silence. Does not use mid/treble.
+ */
+export function terrainMotionEnergy(
+  features: Pick<AudioFeatures, "rms" | "bass" | "kick" | "beatPulse">,
+  kickEnv: number,
+): number {
+  const rms = clamp01(features.rms ?? 0);
+  const sub = clamp01(features.bass ?? 0);
+  const env = clamp01(Math.max(features.kick ?? features.beatPulse ?? 0, kickEnv));
+  return clamp01(rms * 0.45 + sub * 0.4 + env * 0.55);
+}
+
+/**
+ * Advance motion from audio energy × dt. timeMs delta is the integrator rate only.
+ * du = motionGate * flowSpeed * dt / periodSec. Gate=0 ⇒ u freezes. Kick never resets u.
+ */
+export function stepTerrainMotion(
+  state: TerrainMotionState,
+  features: Pick<AudioFeatures, "timeMs" | "rms" | "bass" | "kick" | "beatPulse">,
+  opts: { flowSpeed?: number; periodSec?: number; dt?: number } = {},
+): TerrainMotionState {
+  const periodSec = Math.max(1e-6, opts.periodSec ?? LEXI_TERRAIN_GOLD_PERIOD_SEC);
+  const flowSpeed = num(opts.flowSpeed, 0.35);
+  let dt = opts.dt;
+  if (dt == null) {
+    dt =
+      state.lastTimeMs == null
+        ? 1 / 30
+        : (features.timeMs - state.lastTimeMs) / 1000;
+  }
+  dt = Math.max(0, Math.min(0.05, dt));
+  state.lastTimeMs = features.timeMs;
+
+  const kickIn = clamp01(features.kick ?? features.beatPulse ?? 0);
+  state.kickEnv = Math.max(kickIn, state.kickEnv * Math.exp(-dt / 0.16));
+  if (state.kickEnv < 1e-4) state.kickEnv = 0;
+
+  const raw = terrainMotionEnergy(features, state.kickEnv);
+  const smooth = 1 - Math.exp(-dt / 0.07);
+  state.gate = state.gate + (raw - state.gate) * smooth;
+  if (state.gate < 1e-4) state.gate = 0;
+
+  const du = state.gate * flowSpeed * dt / periodSec;
+  state.u += du;
+  state.u -= Math.floor(state.u);
+  return state;
+}
+
+export function terrainParx(u: number): number {
+  const uu = u - Math.floor(u);
+  return Math.sin(uu * Math.PI * 2) * 3.2;
+}
+
+export function terrainMoteX(index: number, moteCount: number, u: number, width: number): number {
+  const uu = u - Math.floor(u);
+  return width * (0.12 + ((index * 0.173 + uu * 0.02) % 0.76));
+}
+
+export function terrainSurfaceHash(key: readonly number[]): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= Math.round((key[i] ?? 0) * 1e6);
+    h = Math.imul(h, 16777619);
+  }
+  return h | 0;
 }
 
 export function terrainCappedBloom(params: Partial<SceneParams> = LEXI_TERRAIN_GOLD_DEFAULTS): number {
@@ -60,27 +156,38 @@ export function terrainCappedBloom(params: Partial<SceneParams> = LEXI_TERRAIN_G
 }
 
 /**
- * Multi-scale dune height. Function of space + loop phase only — holds at ~0 audio.
- * `u` appears only inside 2π-periodic terms so frame 0 == period end.
+ * Multi-scale dune height. `u` is audio-accumulated phase (frozen at silence).
+ * flowSpeed is NOT applied here — it only gates du in stepTerrainMotion.
+ * bass → large-wavelength swell. kickEnv → z-impulse (already decayed).
  */
-export function terrainHeight(nx: number, z: number, u: number, flowSpeed = 0.35): number {
+export function terrainHeight(nx: number, z: number, u: number, deform: TerrainDeform = {}): number {
   const zw = z - Math.floor(z);
-  const tau = u * Math.PI * 2;
-  const travel = 0.75 + flowSpeed;
+  const uu = u - Math.floor(u);
+  const tau = uu * Math.PI * 2;
   const roll = Math.sin((nx * 0.7 + zw * 1.05) * Math.PI * 2 + tau);
   const dune = Math.sin((nx * 1.45 + zw * 2.15) * Math.PI * 2 + tau);
   const ridge = Math.sin((nx * 2.55 - zw * 3.05) * Math.PI * 2 + 0.9);
   const grain = Math.sin((nx * 4.2 + zw * 1.7) * Math.PI * 2 + tau);
   const peak = Math.max(0, dune * 0.62 + ridge * 0.38);
-  return roll * 0.22 + (dune * 0.36 + ridge * 0.22) * travel + grain * 0.08 + peak * peak * 0.2;
+  const rest = roll * 0.22 + dune * 0.36 + ridge * 0.22 + grain * 0.08 + peak * peak * 0.2;
+  const bass = clamp01(deform.bass ?? 0);
+  const kickEnv = clamp01(deform.kickEnv ?? 0);
+  const swell = Math.sin(nx * Math.PI * 0.55 + zw * Math.PI * 0.7) * bass * 0.34;
+  const punch = Math.sin(zw * Math.PI * 2.4) * kickEnv * 0.22;
+  return rest + swell + punch;
 }
 
-export function terrainSurfaceKey(u: number, rows = 24, cols = 16): number[] {
+export function terrainSurfaceKey(
+  u: number,
+  rows = 24,
+  cols = 16,
+  deform: TerrainDeform = {},
+): number[] {
   const phase = u - Math.floor(u);
   const out: number[] = [];
   for (let r = 0; r < rows; r++) {
     const z = (r / rows + phase) % 1;
-    for (let c = 0; c <= cols; c++) out.push(terrainHeight(c / cols, z, phase));
+    for (let c = 0; c <= cols; c++) out.push(terrainHeight(c / cols, z, phase, deform));
   }
   return out;
 }
@@ -98,7 +205,6 @@ export function terrainMatterPlan(
   bloomCap: number;
   periodSec: number;
   voidHex: string;
-  audioListen: number;
 } {
   const density = num(params.surfaceDensity, 1.4);
   const area = Math.max(0.72, Math.min(1, Math.sqrt((width * height) / (1920 * 1080))));
@@ -113,7 +219,6 @@ export function terrainMatterPlan(
     bloomCap: num(params.bloomCap, 0.55),
     periodSec: num(params.periodSec, LEXI_TERRAIN_GOLD_PERIOD_SEC),
     voidHex: LEXI_TERRAIN_GOLD_VOID,
-    audioListen: 0.07,
   };
 }
 
@@ -232,7 +337,7 @@ function sampleRow(
   horizon: number,
   height: number,
   amp: number,
-  flowSpeed = 0.35,
+  deform: TerrainDeform = {},
 ): { xs: number[]; ys: number[]; crests: number[] } {
   const xs: number[] = [];
   const ys: number[] = [];
@@ -240,7 +345,7 @@ function sampleRow(
   const yBase = groundY(horizon, height, z);
   for (let c = 0; c <= cols; c++) {
     const nx = c / cols;
-    const h = terrainHeight(nx, z + u, u, flowSpeed);
+    const h = terrainHeight(nx, z + u, u, deform);
     const crest = Math.max(0, Math.min(1, (h + 1) * 0.5));
     xs.push(screenX(nx, z, width));
     ys.push(yBase - h * amp * (0.2 + z * 0.8));
@@ -299,17 +404,20 @@ function paintCrestGlow(
   ctx.stroke();
 }
 
+const terrainMotion = createTerrainMotionState();
+
 export const lexiTerrainGoldScene: Scene = {
   id: LEXI_TERRAIN_GOLD_ID,
   name: "Terrain Gold",
   description: "Continuous gold dunes, depth fog — LEXI Terrain Gold, not Kaleido",
   defaultParams: LEXI_TERRAIN_GOLD_DEFAULTS,
-  render(ctxWrap: SceneContext, features: AudioFeatures, params: SceneParams) {
+  render(ctxWrap: SceneContext, features: AudioFeatures, params: SceneParams, dt = 1 / 30) {
     const { ctx, width, height } = ctxWrap;
-    const timeSec = (features.timeMs ?? 0) / 1000;
     const period = num(params.periodSec, LEXI_TERRAIN_GOLD_PERIOD_SEC);
-    const u = terrainPhase(timeSec, period);
-    const tau = u * Math.PI * 2;
+    const flowSpeed = num(params.flowSpeed, 0.35);
+    stepTerrainMotion(terrainMotion, features, { flowSpeed, periodSec: period, dt });
+    const u = terrainMotion.u;
+    const deform: TerrainDeform = { bass: features.bass ?? 0, kickEnv: terrainMotion.kickEnv };
     const bloom = terrainCappedBloom(params);
     const fogAmt = num(params.fogDensity, 0.78);
     const fogH = num(params.fogHeight, 0.38);
@@ -317,15 +425,12 @@ export const lexiTerrainGoldScene: Scene = {
     const horizonY = num(params.horizonY, 0.42);
     const mountainScale = num(params.mountainScale, 1.15);
     const density = num(params.surfaceDensity, 1.4);
-    const flowSpeed = num(params.flowSpeed, 0.35);
-    const listen = 0.07;
-    const ampLift = 1 + (features.bass ?? 0) * listen;
     const plan = terrainMatterPlan(width, height, params);
     const horizon = height * horizonY;
-    const parx = Math.sin(tau) * 3.2;
+    const parx = terrainParx(u);
     const slices = plan.slices;
     const cols = plan.cols;
-    const amp = height * 0.078 * density * 0.72 * ampLift;
+    const amp = height * 0.078 * density * 0.72;
 
     ctx.save();
     paintSky(ctx, width, height, horizon);
@@ -338,10 +443,10 @@ export const lexiTerrainGoldScene: Scene = {
     ctx.fillStyle = haze;
     ctx.fillRect(0, horizon - 28, width, height * 0.16);
 
-    let prev = sampleRow(0, u, cols, width, horizon, height, amp, flowSpeed);
+    let prev = sampleRow(0, u, cols, width, horizon, height, amp, deform);
     for (let i = 1; i <= slices; i++) {
       const z = i / slices;
-      const row = sampleRow(z, u, cols, width, horizon, height, amp, flowSpeed);
+      const row = sampleRow(z, u, cols, width, horizon, height, amp, deform);
       const att = depthBright(z, attK);
       fillRibbon(ctx, prev, row, z, att);
       if (i % 2 === 0) paintCrestGlow(ctx, row, z, att);
@@ -358,7 +463,7 @@ export const lexiTerrainGoldScene: Scene = {
     for (let i = 0; i < motes; i++) {
       const seed = (i * 19 + 5) / motes;
       const z = 0.55 + 0.42 * seed;
-      const x = width * (0.12 + ((i * 0.173 + u * 0.02) % 0.76));
+      const x = terrainMoteX(i, motes, u, width);
       const y = groundY(horizon, height, z) - 10 - (i % 5) * 7;
       ctx.fillStyle = hexToRgba("#fff4d2", 0.06 + z * 0.08);
       ctx.beginPath();
