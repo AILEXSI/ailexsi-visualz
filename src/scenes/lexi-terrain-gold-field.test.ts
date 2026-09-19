@@ -121,28 +121,25 @@ describe("LEXI Terrain Gold · Field Draw A/B", () => {
     const hash1 = terrainSurfaceHash(key1);
     const frame1 = terrainSurfaceHash(fieldFrameKey(s, deform));
     const delta = maxAbs(key0, key1);
-    expect(s.u).toBeGreaterThan(0.01);
-    expect(s.gate).toBeGreaterThan(0.2);
+    expect(s.u).toBeCloseTo(0.07091347828749299, 12);
+    expect(s.gate).toBeCloseTo(0.7790426150841249, 12);
     expect(fieldLowMid(music(1000))).toBeGreaterThan(0.2);
-    expect(delta).toBeGreaterThan(0.05);
-    expect(hash1).not.toBe(hash0);
+    expect(delta).toBeCloseTo(1.3523604108433973, 12);
+    expect(hash0).toBe(404661294);
+    expect(hash1).toBe(-447188435);
     expect(frame1).not.toBe(frame0);
-    // numeric proof captured for the deliverable
-    expect({
-      A_u: s.u,
-      A_gate: s.gate,
-      A_hash0: hash0,
-      A_hash1: hash1,
-      A_delta: delta,
-    }).toEqual(expect.objectContaining({ A_u: expect.any(Number) }));
   });
 
   it("B: features=0 after kick/sub decay — zero travel while timeMs advances", () => {
     const s = createTerrainMotionState();
     const dt = 1 / 30;
-    stepFieldMotion(s, { timeMs: 0, rms: 0, bass: 0, mid: 0, kick: 1, beatPulse: 1 }, { dt });
+    for (let i = 1; i <= 60; i++) {
+      stepFieldMotion(s, music(i * dt * 1000), { dt, flowSpeed: 0.35, periodSec: 12 });
+    }
+    expect(s.u).toBeGreaterThan(0.01);
+    stepFieldMotion(s, { timeMs: 61 * dt * 1000, rms: 0, bass: 0, mid: 0, kick: 1, beatPulse: 1 }, { dt });
     // kickTau 0.5 ⇒ settle ~6s (180 frames) so kickEnv/gate hit the 1e-4 floor
-    for (let i = 1; i <= 180; i++) {
+    for (let i = 62; i <= 62 + 180; i++) {
       stepFieldMotion(s, silent(i * dt * 1000), { dt });
     }
     expect(s.kickEnv).toBe(0);
@@ -153,20 +150,19 @@ describe("LEXI Terrain Gold · Field Draw A/B", () => {
     const hash0 = terrainSurfaceHash(key0);
     const frame0 = terrainSurfaceHash(fieldFrameKey(s));
 
-    for (let i = 181; i <= 181 + 240; i++) {
+    for (let i = 243; i <= 243 + 240; i++) {
       stepFieldMotion(s, silent(i * dt * 1000), { dt });
     }
 
     const key1 = terrainSurfaceKey(s.u);
     expect(s.u).toBe(uFrozen);
+    expect(s.u).toBeCloseTo(0.017367940969097478, 12);
     expect(s.gate).toBe(0);
     expect(s.kickEnv).toBe(0);
     expect(maxAbs(key0, key1)).toBe(0);
+    expect(hash0).toBe(-1649409921);
     expect(terrainSurfaceHash(key1)).toBe(hash0);
     expect(terrainSurfaceHash(fieldFrameKey(s))).toBe(frame0);
-    expect({ B_u: s.u, B_hash: hash0, B_frames: 240 }).toEqual(
-      expect.objectContaining({ B_u: uFrozen, B_hash: hash0 }),
-    );
   });
 
   it("kick does not reset u; Field kickEnv outlasts MotionGate default tau", () => {

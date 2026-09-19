@@ -4,7 +4,7 @@
  *
  * LAW: Pose = landscape. Motion = 100% audio via motionGate.
  * timeMs / clock are decay/integration only — never travel.
- * Gate=0 → freeze (poster still). Fill / Lambert dune shading forbidden.
+ * Gate=0 → freeze (poster still). Fill / shaded dune skin forbidden.
  *
  * AUDIO (motion only — not color-as-EQ):
  *   SUB/bass  → large-wavelength swell inside shared terrainHeight
