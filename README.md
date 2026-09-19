@@ -11,16 +11,16 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 | Surface | What you get |
 |---------|----------------|
 | File | **Neu / Laden / Speichern / Speichern unter / Letzte Dateien / Export** — Ctrl+N O S, Ctrl+Shift+S, Ctrl+E. `.visualz.json` (schema 1) or Resonance v5 VIS+A1 subset. Audio blob is not stored. |
-| Timeline | Exactly **1 VIS + 1 A1** (clips may split). Zoom px/s (+/−), Pan, Fit (F), Marker (M), timecode |
+| Timeline | Exactly **1 VIS + 1 A1** (clips may split). Zoom px/s (+/−), Pan, Fit (F), Marker (M), timecode. Drag the splitter under Preview to resize (default ~220–280px; grows with the window). Horizontal scroll for long tracks. |
 | Screens | **ARRANGE** and **CUTTER** (Studio top-bar subset; Tab to switch) |
 | Inspector | Click a VIS clip → **Style** + **Quelle**. Context menu applies the same. Writes style/scene id on the clip. |
 | Import | One audio file → vis clip generated for the same span |
 | Cutter | IN/OUT, Split, trim / ripple trim, extract, lift — audio + VIS stay linked |
 | Loop | IN/OUT **is** the loop region. Set Loop (or complete OUT) arms it; Loop toggles repeat |
-| VIS | Registry families: LEXI, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click applies immediately. Cycle ◀ ▶ / `[` `]` still works. |
+| VIS | Registry families: LEXI, **LEXI Terrain Gold**, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click applies immediately. Cycle ◀ ▶ / `[` `]` still works. |
 | Mixer | **A1 + Master** Mute / Solo / meters. Mute silences playback. |
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
-| Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed) |
+| Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed). Loop ON + IN/OUT → that range only; Loop OFF → full. Dialog shows `Range: LOOP …` or `Range: FULL …`. Default 1920×1080 @ 30. |
 
 ## Run the Arranger (web)
 
@@ -39,7 +39,7 @@ Open `http://127.0.0.1:5173`. Tauri webview uses `npm run web:dev` on **1421** (
 6. Cycle visual functions with **◀ ▶** (or `[` `]`) or the VIS dropdown. Or open **VIS** and pick a family/style (including Kaleido Loop presets). The clip under the playhead changes; export uses `sceneAt` + clip params for each frame.
 7. Click a VIS clip to inspect **Style** / **Quelle**. Mute **A1** or **Master** in the mixer.
 8. **File → Speichern** writes `.visualz.json`. Laden restores VIS+A1, loop, markers, mixer, styles (re-import audio after load).
-9. **Export** — 1280×720 or 1920×1080 @ 24/25/30. Downloads an H.264 `.mp4` of the visual layer.
+9. **Export** — default 1920×1080 @ 30 (also 1280×720, 24/25). Loop ON with IN/OUT exports only that window. Audio is not muxed — use the file over the track elsewhere.
 
 | Key | Action |
 |-----|--------|
@@ -140,4 +140,7 @@ npm run typecheck
 | Inspector Style / Quelle | Implemented |
 | VIS family registry + Kaleido Loop | Implemented (`kaleido-loop`, seamless test) |
 | Mixer A1 + Master | Implemented (not 64-stem) |
+| Loop-ranged vis-only export | Implemented (`resolveExportRange`) |
+| Window + timeline resize | Implemented (min 1280×720, splitter, lanes grow) |
+| LEXI Terrain Gold | Implemented (own family, not Kaleido) |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

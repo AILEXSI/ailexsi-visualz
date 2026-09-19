@@ -11,6 +11,7 @@ describe("VIS style registry", () => {
   it("lists Studio families plus Kaleido Loop", () => {
     expect([...VIS_FAMILIES]).toEqual([
       "LEXI",
+      "LEXI Terrain Gold",
       "Classic",
       "Flow",
       "Geometry",
@@ -33,5 +34,7 @@ describe("VIS style registry", () => {
     ]);
     expect(getCatalogEntry("kaleido-loop-gold-gate")?.params).toEqual(KALEIDO_LOOP_PRESETS["gold-gate"]);
     expect(SCENE_CATALOG.filter((e) => e.family === "LEXI")).toEqual([]);
+    expect(getCatalogEntry("lexi-terrain-gold")?.family).toBe("LEXI Terrain Gold");
+    expect(getCatalogEntry("lexi-terrain-gold")?.renderer).toBe("lexi-terrain-gold");
   });
 });

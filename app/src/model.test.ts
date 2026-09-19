@@ -6,10 +6,14 @@ import {
   createEmptyProject,
   cycleScene,
   effectiveGain,
+  exportFrameCount,
   extractRange,
   featureTimeAt,
   fitZoomPxPerSec,
+  formatExportRangeLine,
   liftRange,
+  resolveExportRange,
+  visFileDurationSec,
   selectVis,
   setVisQuelle,
   moveLoopRange,
@@ -257,5 +261,42 @@ describe("style / mixer / timeline helpers", () => {
     expect(effectiveGain({ ...p.mixer, a1Muted: true })).toBe(0);
     expect(effectiveGain({ ...p.mixer, masterMuted: true })).toBe(0);
     expect(effectiveGain({ ...p.mixer, a1Solo: true, a1Volume: 0.5, masterVolume: 0.8 })).toBe(0.4);
+  });
+});
+
+describe("resolveExportRange", () => {
+  it("Loop ON + IN/OUT → only that window; frames and file duration match OUT-IN", () => {
+    const p = setLoopRange(placed(), 1_000, 4_000);
+    const range = resolveExportRange(p);
+    expect(range.kind).toBe("loop");
+    expect(range.startMs).toBe(1_000);
+    expect(range.endMs).toBe(4_000);
+    expect(range.durationMs).toBe(3_000);
+    expect(range.warning).toBeUndefined();
+    const fps = 30;
+    const frames = exportFrameCount(range.durationMs, fps);
+    expect(frames).toBe(90);
+    expect(visFileDurationSec(frames, fps)).toBeCloseTo((4_000 - 1_000) / 1000, 6);
+    expect(formatExportRangeLine(range, fps)).toBe("Range: LOOP 00:01.00–00:04.00 · 90 frames");
+    expect(playbackBounds(p)).toEqual({ startMs: 1_000, endMs: 4_000 });
+  });
+
+  it("Loop OFF → full A1/timeline length", () => {
+    const ranged = setLoopRange(placed(), 2_000, 5_000);
+    const off = toggleLoop(ranged);
+    const range = resolveExportRange(off);
+    expect(range.kind).toBe("full");
+    expect(range.startMs).toBe(0);
+    expect(range.durationMs).toBe(12_500);
+    expect(exportFrameCount(range.durationMs, 30)).toBe(375);
+    expect(formatExportRangeLine(range, 30)).toBe("Range: FULL · 375 frames");
+  });
+
+  it("Loop ON without IN/OUT does not invent a region — FULL + warning", () => {
+    const p = { ...placed(), loop: true, inPointMs: null, outPointMs: null };
+    const range = resolveExportRange(p);
+    expect(range.kind).toBe("full");
+    expect(range.durationMs).toBe(12_500);
+    expect(range.warning).toMatch(/Set Loop/i);
   });
 });

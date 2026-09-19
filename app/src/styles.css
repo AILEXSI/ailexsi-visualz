@@ -39,11 +39,13 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 .toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 6px 10px;
   background: var(--panel);
@@ -104,9 +106,16 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
-.preview-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 160px; background: #050608; }
+.preview-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 120px; background: #050608; }
+.stage-split {
+  flex: 0 0 6px;
+  cursor: ns-resize;
+  background: var(--line);
+}
+.stage-split:hover { background: #4a5568; }
 .preview-stage {
   position: relative;
   flex: 1;
@@ -130,6 +139,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent); }
 .transport {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
   gap: 0;
   padding: 6px 10px;
   background: var(--panel);
@@ -170,8 +181,9 @@ button.loop-armed { border-color: var(--in); color: var(--in); }
 .timeline {
   --lane-label-px: 80px;
   background: #0c1016;
-  flex: 0 0 38%;
-  min-height: 160px;
+  flex: 0 0 var(--timeline-h);
+  height: var(--timeline-h);
+  min-height: 220px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -209,11 +221,18 @@ button.loop-armed { border-color: var(--in); color: var(--in); }
   padding-left: 4px;
   pointer-events: none;
 }
-.timeline-lanes { flex: 1; min-height: 0; overflow: auto; }
+.timeline-lanes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
 .lane {
   display: grid;
   grid-template-columns: var(--lane-label-px) 1fr;
-  height: 52px;
+  flex: 1 1 0;
+  min-height: 84px;
   border-bottom: 1px solid var(--line);
 }
 .lane-label {
@@ -419,7 +438,9 @@ button.loop-armed { border-color: var(--in); color: var(--in); }
   z-index: 20;
 }
 .modal {
-  width: min(440px, calc(100% - 32px));
+  width: min(480px, calc(100% - 32px));
+  max-height: min(90vh, 720px);
+  overflow: auto;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -430,12 +451,19 @@ button.loop-armed { border-color: var(--in); color: var(--in); }
 .error { color: var(--danger); font-size: 13px; }
 .export-row { display: flex; gap: 12px; margin: 12px 0; }
 .export-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.export-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.export-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.export-range {
+  font-family: var(--mono);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.export-warn { color: var(--accent); font-size: 12px; margin: 6px 0 0; }
 
 .workspace {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 168px;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) minmax(140px, 168px);
   min-height: 0;
+  min-width: 0;
 }
 .inspector, .mixer {
   background: var(--panel);

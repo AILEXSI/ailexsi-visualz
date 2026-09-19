@@ -19,6 +19,8 @@ export type VisExportOptions = {
   height: number;
   fps: number;
   durationMs: number;
+  /** Timeline start of the export window (loop IN, or 0 for FULL). */
+  startMs?: number;
   sceneId: string;
   /** Scene at a timeline time — used after Cutter splits with different VIS functions. */
   sceneAt?: (timelineMs: number) => string;
@@ -52,6 +54,7 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
   const height = Math.max(16, Math.round(opts.height / 2) * 2);
   const fps = opts.fps;
   const durationMs = Math.max(0, opts.durationMs);
+  const startMs = Math.max(0, opts.startMs ?? 0);
   const total = Math.max(1, Math.round((durationMs / 1000) * fps));
   const frameDurUs = Math.round(1_000_000 / fps);
   const dt = 1 / fps;
@@ -111,7 +114,7 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
     let lastScene = opts.sceneId;
     for (let i = 0; i < total; i++) {
       if (opts.signal?.aborted) throw new Error("Export cancelled");
-      const timeMs = (i / fps) * 1000;
+      const timeMs = startMs + (i / fps) * 1000;
       const scene = opts.sceneAt?.(timeMs) ?? opts.sceneId;
       if (scene !== lastScene) {
         engine.setScene(scene);

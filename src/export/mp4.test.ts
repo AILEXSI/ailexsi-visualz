@@ -23,6 +23,31 @@ describe("vis-only MP4 mux", () => {
     expect(text).toContain("moov");
     expect(text).toContain("mdat");
     expect(text).toContain("avc1");
+    expect(text).not.toContain("mp4a");
+    expect(text).not.toContain("soun");
+    expect([...text.matchAll(/trak/g)]).toHaveLength(1);
+  });
+
+  it("movie duration equals sample count / fps (vis-only, no audio track)", () => {
+    const fps = 30;
+    const frames = 90;
+    const samples = Array.from({ length: frames }, (_, i) => ({
+      data: new Uint8Array([0, 0, 0, 8, 0x65, 1, 2, 3, 4, 5, 6, 7]),
+      timestampUs: Math.round((i / fps) * 1_000_000),
+      durationUs: Math.round(1_000_000 / fps),
+      key: i === 0,
+    }));
+    const bytes = muxAvcToMp4({
+      width: 64,
+      height: 36,
+      fps,
+      description: fakeAvcC(),
+      samples,
+    });
+    const text = new TextDecoder().decode(bytes);
+    expect(text).not.toContain("mp4a");
+    expect([...text.matchAll(/trak/g)]).toHaveLength(1);
+    expect(frames / fps).toBeCloseTo(3, 6);
   });
 
   it("refuses an empty sample list", () => {

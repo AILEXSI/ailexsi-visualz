@@ -189,18 +189,62 @@ export function loopRangeOf(project: Project): { inMs: number; outMs: number } |
   return editRangeOf(project);
 }
 
+export type ExportRangeKind = "loop" | "full";
+
+export interface ExportRange {
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  kind: ExportRangeKind;
+  warning?: string;
+}
+
+export function exportFrameCount(durationMs: number, fps: number): number {
+  return Math.max(1, Math.round((Math.max(0, durationMs) / 1000) * fps));
+}
+
+export function visFileDurationSec(frames: number, fps: number): number {
+  return frames / Math.max(1, fps);
+}
+
+/** Shared by preview loop bounds and vis-only export. Does not invent a region. */
+export function resolveExportRange(project: Project): ExportRange {
+  const fullEnd = projectDurationMs(project);
+  const region = loopRangeOf(project);
+  if (project.loop && region) {
+    const durationMs = Math.max(0, region.outMs - region.inMs);
+    return { startMs: region.inMs, endMs: region.outMs, durationMs, kind: "loop" };
+  }
+  if (project.loop && !region) {
+    return {
+      startMs: 0,
+      endMs: fullEnd,
+      durationMs: fullEnd,
+      kind: "full",
+      warning: "Loop on but no IN/OUT region — exporting FULL. Set Loop to export a region.",
+    };
+  }
+  return { startMs: 0, endMs: fullEnd, durationMs: fullEnd, kind: "full" };
+}
+
+export function formatExportRangeLine(range: ExportRange, fps: number): string {
+  const frames = exportFrameCount(range.durationMs, fps);
+  if (range.kind === "loop") {
+    return `Range: LOOP ${formatTimecode(range.startMs)}–${formatTimecode(range.endMs)} · ${frames} frames`;
+  }
+  return `Range: FULL · ${frames} frames`;
+}
+
 /**
- * Transport window. IN/OUT bound playback only while Loop is on (Studio playback.ts).
+ * Transport window. Same resolve as export: Loop + IN/OUT → region; otherwise full.
  * Loop off plays 0 → timeline end; marks stay visible but do not stop play.
  */
 export function playbackBounds(project: Project): { startMs: number; endMs: number } {
-  const dur = projectDurationMs(project);
-  if (project.loop) {
-    const range = loopRangeOf(project);
-    if (range) return { startMs: range.inMs, endMs: Math.max(range.inMs + FRAME_MS, range.outMs) };
-    return { startMs: 0, endMs: Math.max(FRAME_MS, dur) };
+  const range = resolveExportRange(project);
+  if (range.kind === "loop") {
+    return { startMs: range.startMs, endMs: Math.max(range.startMs + FRAME_MS, range.endMs) };
   }
-  return { startMs: 0, endMs: Math.max(0, dur) };
+  return { startMs: 0, endMs: Math.max(0, range.endMs) };
 }
 
 export function toggleLoop(project: Project): Project {

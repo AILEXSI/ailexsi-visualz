@@ -22,9 +22,11 @@ import {
   extractRange,
   featureTimeAt,
   fitZoomPxPerSec,
+  formatExportRangeLine,
   liftRange,
   loopRangeOf,
   paramsAt,
+  resolveExportRange,
   placeAudio,
   playbackBounds,
   projectDurationMs,
@@ -47,6 +49,7 @@ import {
 import { deserializeProject, loadRecents, pushRecent, serializeProject, VISUALZ_EXT, type RecentFile } from "./persist";
 import { cycleProductionScreen, type ProductionScreen } from "./screens";
 import { exportVisOnly } from "./export/vis-export";
+import { clampTimelineHeight, defaultTimelineHeight } from "./layout";
 import { isTauriRuntime } from "./tauri-runtime";
 import { pickTauriOpenPath, pickTauriSavePath, readTauriFileText, writeTauriFile } from "./tauri-save";
 import { Cutter } from "./ui/Cutter";
@@ -76,9 +79,11 @@ export function App() {
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState("");
   const [exportError, setExportError] = useState<string | null>(null);
-  const [exportW, setExportW] = useState(1280);
-  const [exportH, setExportH] = useState(720);
+  const [exportW, setExportW] = useState(1920);
+  const [exportH, setExportH] = useState(1080);
   const [exportFps, setExportFps] = useState(30);
+  const [winH, setWinH] = useState(() => (typeof window === "undefined" ? 800 : window.innerHeight));
+  const [timelineUserH, setTimelineUserH] = useState<number | null>(null);
   const scenes = SCENES;
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -98,6 +103,14 @@ export function App() {
   } | null>(null);
 
   const durationMs = projectDurationMs(project);
+  const timelineH = timelineUserH ?? defaultTimelineHeight(winH);
+  const exportRange = resolveExportRange(project);
+
+  useEffect(() => {
+    const onResize = () => setWinH(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const extractor = useMemo<OfflineFeatureExtractor | null>(
     () => (pcm ? createOfflineFeatureExtractor(pcm) : null),
     [pcm],
@@ -523,12 +536,14 @@ export function App() {
     setExportProgress("Starting encoder…");
     try {
       const snapshot = project;
+      const range = resolveExportRange(snapshot);
       const result = await exportVisOnly({
         width: exportW,
         height: exportH,
         fps: exportFps,
-        durationMs: projectDurationMs(snapshot),
-        sceneId: sceneAt(snapshot, 0),
+        startMs: range.startMs,
+        durationMs: range.durationMs,
+        sceneId: sceneAt(snapshot, range.startMs),
         sceneAt: (t) => sceneAt(snapshot, t),
         paramsAt: (t) => paramsAt(snapshot, t),
         featureTimeAt: (t) => featureTimeAt(snapshot, t),
@@ -682,7 +697,7 @@ export function App() {
           onStyle={pickStyle}
           onQuelle={(quelle) => setProject((p) => setVisQuelle(p, quelle))}
         />
-        <div className="stage">
+        <div className="stage" style={{ ["--timeline-h" as string]: `${timelineH}px` }}>
         <Preview
           project={project}
           playing={playing}
@@ -713,6 +728,27 @@ export function App() {
             onLift={() => applyCut((p) => liftRange(p), "Lift")}
           />
         ) : null}
+        <div
+          className="stage-split"
+          data-testid="timeline-split"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize timeline"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const originY = e.clientY;
+            const originH = timelineH;
+            const move = (ev: MouseEvent) => {
+              setTimelineUserH(clampTimelineHeight(originH - (ev.clientY - originY)));
+            };
+            const up = () => {
+              window.removeEventListener("mousemove", move);
+              window.removeEventListener("mouseup", up);
+            };
+            window.addEventListener("mousemove", move);
+            window.addEventListener("mouseup", up);
+          }}
+        />
         <Transport
           project={project}
           playing={playing}
@@ -792,6 +828,8 @@ export function App() {
         busy={exporting}
         progress={exportProgress}
         error={exportError}
+        rangeLine={formatExportRangeLine(exportRange, exportFps)}
+        warning={exportRange.warning}
         width={exportW}
         height={exportH}
         fps={exportFps}

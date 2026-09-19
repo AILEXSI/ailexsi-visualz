@@ -5,9 +5,11 @@
 
 import type { SceneParams } from "../types";
 import { KALEIDO_LOOP_PRESETS, type KaleidoPresetId } from "./kaleido-loop";
+import { LEXI_TERRAIN_GOLD_DEFAULTS } from "./lexi-terrain-gold";
 
 export const VIS_FAMILIES = [
   "LEXI",
+  "LEXI Terrain Gold",
   "Classic",
   "Flow",
   "Geometry",
@@ -31,6 +33,16 @@ export interface SceneCatalogEntry {
 }
 
 export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
+  {
+    id: "lexi-terrain-gold",
+    displayName: "Terrain Gold",
+    shortName: "Terrain",
+    family: "LEXI Terrain Gold",
+    description: "Gold particle dunes, horizon mountains, fog — not Kaleido",
+    renderer: "lexi-terrain-gold",
+    mode: "loop-seamless",
+    params: LEXI_TERRAIN_GOLD_DEFAULTS,
+  },
   {
     id: "resonance-wave",
     displayName: "Resonance Wave",

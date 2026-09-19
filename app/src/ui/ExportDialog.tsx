@@ -3,6 +3,8 @@ interface Props {
   busy: boolean;
   progress: string;
   error: string | null;
+  rangeLine: string;
+  warning?: string;
   width: number;
   height: number;
   fps: number;
@@ -22,6 +24,12 @@ export function ExportDialog(props: Props) {
         <p className="muted">
           H.264 of the visual layer. Audio is not muxed — use the file over the track elsewhere.
         </p>
+        <p className="export-range" data-testid="export-range">
+          {props.rangeLine}
+        </p>
+        {props.warning ? (
+          <p className="export-warn" data-testid="export-range-warn">{props.warning}</p>
+        ) : null}
         <div className="export-row">
           <label>
             Size

@@ -9,6 +9,7 @@ import { auroraRibbonScene } from "./aurora-ribbon";
 import { cymaticGridScene } from "./cymatic-grid";
 import { kickSunScene } from "./kick-sun";
 import { kaleidoLoopScene } from "./kaleido-loop";
+import { lexiTerrainGoldScene } from "./lexi-terrain-gold";
 
 export const builtinScenes: Scene[] = [
   resonanceWaveScene,
@@ -21,6 +22,7 @@ export const builtinScenes: Scene[] = [
   tunnelSpiralScene,
   pulseOrbScene,
   kaleidoLoopScene,
+  lexiTerrainGoldScene,
 ];
 
 export {
@@ -34,4 +36,5 @@ export {
   cymaticGridScene,
   kickSunScene,
   kaleidoLoopScene,
+  lexiTerrainGoldScene,
 };

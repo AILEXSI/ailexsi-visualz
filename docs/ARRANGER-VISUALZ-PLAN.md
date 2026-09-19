@@ -234,7 +234,7 @@ Visualz (same 1+1 timeline):
 | Drag loop wash / handles | Move or resize IN/OUT (Studio `moveInOut`) |
 | Shift+Home / Shift+End | Jump to IN / OUT |
 
-No second loop-marker type. Export still uses the full cut timeline, not the loop window.
+No second loop-marker type. Export uses the same `resolveExportRange` as preview loop: Loop + IN/OUT → that window; otherwise FULL.
 
 ---
 
@@ -247,8 +247,21 @@ Studio names win. Still **1 VIS + 1 A1**. Do not rebuild cinematic styles — wi
 | **File** | Neu, Laden, Speichern, Speichern unter, Letzte Dateien, Export — Ctrl+N / O / S, Ctrl+Shift+S, Ctrl+E. Persist `.visualz.json` (`kind: ailexsi-visualz`, schema 1). Resonance `schemaVersion` 5 is read as a VIS+A1 subset. Audio blobs are not stored; reload asks to re-import audio. Recents: `localStorage` `ailexsi.visualz.recents`, max 8. |
 | **Timeline** | Zoom px/s (+/−), Pan, Fit (F), Marker (M), timecode. Split is S and Studio Cut **V**. |
 | **Inspector** | Click a VIS clip → Style + Quelle. Context menu Style / Quelle. Apply writes `styleId` / `sceneId` (renderer) / `params` / `quelle` on that clip. |
-| **VIS menu** | Families from the shared registry: LEXI, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click = immediate apply. LEXI is listed empty (no LEXI paint in this engine). |
+| **VIS menu** | Families from the shared registry: LEXI, **LEXI Terrain Gold**, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click = immediate apply. LEXI stays empty (no horizon-wave morph). |
 | **Mixer** | A1 + Master only. Mute / Solo / meters. Mute zeros `effectiveGain`. One audio track. |
 | **Kaleido Loop** | Own family, not LEXI. Registry id `kaleido-loop`, family `Kaleido Loop`, mode `loop-seamless`. Params: mirrors 4\|8, periodBeats 8\|16, rotSpeed, bloom, hueDrift, pulseAmount. Phase `fract(timeSec / T)` so frame 0 == period end. Audio-reactive on intensity only (bass→bloom/core, mid→edges, beat→pulse). Presets: Gold Gate, Pink Core, Cyan Pulse. Neon gold/pink/cyan tunnel, no UI in the render. Test: 8 bars @ 120 BPM, frame 0 ≈ last frame ≤ 1 LSB after bloom. |
 
 App / Tauri version stays **0.4.0** (MSI-safe numeric).
+
+---
+
+## 10. Window / timeline resize + loop-ranged export + Terrain Gold
+
+Still **1 VIS + 1 A1**. No Director, no audio mux.
+
+| Item | What |
+|------|------|
+| Window | Tauri `resizable: true`, `minWidth` 1280, `minHeight` 720, no max lock. Preview / Timeline / Mixer flex with the frame. Transport + export dialog wrap / scroll so they do not clip. |
+| Timeline height | Vertical splitter under Preview. Default `defaultTimelineHeight(window)` ≈ 220–280px at typical sizes; larger windows give the timeline more pixels (cap 480). Lanes share that height (`min-height: 84px`) so A1 waveform stays readable when Mixer is open. Zoom px/s + Fit unchanged; long tracks scroll horizontally. |
+| Export range | Shared `resolveExportRange(project)` for preview loop and export. Loop ON + valid IN/OUT → `[IN, OUT)`, `frames = round((OUT-IN)/1000*fps)`. Loop OFF → full timeline. Loop ON without a region → FULL + dialog warning (does not invent IN/OUT). Dialog: `Range: LOOP mm:ss.cs–mm:ss.cs · N frames` or `Range: FULL · N frames`. Fertig line unchanged. Default 1920×1080 @ 30. Audio still not muxed. |
+| LEXI Terrain Gold | Own family `LEXI Terrain Gold`, id `lexi-terrain-gold`, mode `loop-seamless`. Gold particle/wire dunes, perspective to horizon, mountain silhouette, fog, bokeh. Phase `fract(timeSec / 8)`. Bass→wave height, mid→line glow, highs→sparkle. No hue-spin, no kaleido. LEXI family stays empty; Kaleido unchanged. |

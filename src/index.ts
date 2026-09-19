@@ -236,6 +236,13 @@ export {
   kaleidoLoopState,
   kaleidoPeriodSec,
 } from "./scenes/kaleido-loop";
+export {
+  LEXI_TERRAIN_GOLD_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FAMILY,
+  LEXI_TERRAIN_GOLD_ID,
+  LEXI_TERRAIN_GOLD_MODE,
+  terrainPhase,
+} from "./scenes/lexi-terrain-gold";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";
