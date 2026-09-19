@@ -207,7 +207,7 @@ export function visFileDurationSec(frames: number, fps: number): number {
   return frames / Math.max(1, fps);
 }
 
-/** Shared by preview loop bounds and vis-only export. Does not invent a region. */
+/** Shared by preview loop bounds and Export MP4 (vis + A1). Does not invent a region. */
 export function resolveExportRange(project: Project): ExportRange {
   const fullEnd = projectDurationMs(project);
   const region = loopRangeOf(project);

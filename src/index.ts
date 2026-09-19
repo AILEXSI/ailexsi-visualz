@@ -268,3 +268,16 @@ export { muxAvcToMp4, mp4HasSoundTrack } from "./export/mp4";
 export type { AvcSample, AacSample, AacTrack, PcmTrack } from "./export/mp4";
 export { encodeAacFromPcm, aacAudioSpecificConfigIsUsable, AAC_BITRATE } from "./export/aac";
 export { slicePcmWindow, pcmToSowt, slicedPcmIsAudible } from "./export/pcm-slice";
+export { pcmToWav, wavDurationSec } from "./export/wav";
+export {
+  assertPrimaryExportHasAudio,
+  EXAMPLE_FFPROBE_MUXED_STREAMS,
+  FFMPEG_MISSING_ERROR,
+  NO_AUDIO_STREAM_ERROR,
+  ffmpegMuxArgv,
+  ffprobeAudioCodec,
+  ffprobeDurationSec,
+  ffprobeHasAudioStream,
+  parseFfprobeJson,
+  quoteFfmpegMuxCommand,
+} from "./export/ffmpeg-mux";

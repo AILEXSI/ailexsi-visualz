@@ -1,6 +1,6 @@
 # AILEXSI Visualz Arranger
 
-Local-first **Arranger** for one audio file → cinematic visuals → vis-only H.264 export.
+Local-first **Arranger** for one audio file → cinematic visuals → one playable MP4 (VIS H.264 + A1 AAC).
 
 The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Resonance Wave** is the quality ruler. Arranger + Cutter on **1 VIS + 1 A1** only. Mixer is A1 + Master (not the 64-stem studio). No AGPL.
 
@@ -20,7 +20,7 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 | VIS | Registry families: LEXI, **LEXI Terrain Gold**, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click applies immediately. Cycle ◀ ▶ / `[` `]` still works. |
 | Mixer | **A1 + Master** Mute / Solo / meters. Mute silences playback. |
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
-| Export | **Export MP4** = VIS H.264 + A1 audio (AAC ~320k, PCM fallback) in one file. Loop ON + IN/OUT → that range; Loop OFF → full. Silent vis-only is a secondary link. |
+| Export | **Export MP4** = VIS H.264 + A1 AAC in one file (`exportMp4`). Tauri uses ffmpeg mux + probe. Loop ON + IN/OUT → that range; Loop OFF → full. Silent vis-only is a secondary link. |
 
 ## Run the Arranger (web)
 
@@ -111,10 +111,23 @@ npm run typecheck
 
 ## Export notes
 
-- **Shipped:** **Export MP4** = AVC + A1 (AAC 320k via `AudioEncoder`, PCM `sowt` fallback) in one ISO-BMFF file. Range follows Loop. No WebM fallback.
-- **Secondary:** Export vis-only (no audio).
+- **Primary (default button Export MP4):** `exportMp4` / `exportVisWithA1` in `app/src/export/vis-export.ts`. One playable file: VIS H.264 + A1 AAC. After mux, `mp4HasSoundTrack` and/or ffprobe `codec_type=audio` must pass or the dialog shows FAIL — never Fertig on a silent file.
+- **Tauri / Windows:** encode vis-only temp → write A1 PCM slice to `{a1Range}.wav` (Loop ON+IN/OUT = that window, same as `-ss IN -t (OUT-IN)`; Loop OFF = full A1) → invoke `ffmpeg_mux_vis_a1`. ffmpeg missing is a hard fail.
+- **Browser:** WebCodecs AAC mux, then the same audio-stream probe. No `sowt` Fertig.
+- **Secondary:** Export vis-only (no audio) — silent by design.
 - **Not in this slice:** Frame Engine AILEXSI (no source video to decode).
 - Needs a Chromium-family browser with H.264 encode. If `VideoEncoder` is missing, Export fails with an explicit message.
+
+### Export debug (default path)
+
+| Question | Answer |
+|----------|--------|
+| Which function/file is the real default Export path? | `exportMp4` (alias `exportVisWithA1`) in `app/src/export/vis-export.ts`. `App.tsx` `onExport(true)` calls it. `exportVisOnly` is the secondary silent button only. |
+| Is A1 path/PCM passed? | Yes — decoded A1 `PcmBuffer` (`pcm` from import). There is no original-file sidecar. The slicer writes `{a1Range}.wav` for the export window (Loop IN/OUT or full). |
+| Full ffmpeg command actually started | `ffmpeg -y -i "{visTemp}.mp4" -i "{a1Range}.wav" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k -shortest "{out}.mp4"` — quoted in logs as `[visualz-export]` and returned from the Tauri command. |
+| Example ffprobe stream list of a muxed output | `streams: [ { index: 0, codec_name: "h264", codec_type: "video" }, { index: 1, codec_name: "aac", codec_type: "audio", bit_rate: "320000" } ]` |
+
+Fertig (primary only): `Fertig · N frames · codec · bytes · audio: aac · from A1 · range 01:29.88–02:19.91` (or `range FULL`).
 
 ## Docs
 
@@ -133,7 +146,7 @@ npm run typecheck
 | 1 VIS + 1 audio | Implemented |
 | Audio import → generated vis | Implemented |
 | Cinematic engine under preview | Implemented |
-| Export MP4 (VIS + A1) | Implemented (AAC preferred, PCM fallback) |
+| Export MP4 (VIS + A1) | Implemented (`exportMp4` + ffmpeg on Tauri; probe required) |
 | Export vis-only (no audio) | Secondary option |
 | Cutter (1+1 trim / split / extract) | Implemented (not Studio V1/V2 transitions) |
 | Loop setzen (IN/OUT region + toggle) | Implemented |
@@ -142,7 +155,7 @@ npm run typecheck
 | Inspector Style / Quelle | Implemented |
 | VIS family registry + Kaleido Loop | Implemented (`kaleido-loop`, seamless test) |
 | Mixer A1 + Master | Implemented (not 64-stem) |
-| Loop-ranged vis-only export | Implemented (`resolveExportRange`) |
+| Loop-ranged export | Implemented (`resolveExportRange` on vis + A1) |
 | Window + timeline resize | Implemented (min 1280×720, splitter, lanes grow) |
 | LEXI Terrain Gold | Implemented (own family, not Kaleido) |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

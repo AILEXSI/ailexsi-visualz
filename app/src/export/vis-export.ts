@@ -1,14 +1,17 @@
 /**
- * Export MP4: cinematic VIS frames (H.264) + A1 audio when requested.
- * Primary path muxes AAC (or PCM fallback). Vis-only is the silent option.
+ * Export paths:
+ * - Primary `exportMp4` / `exportVisWithA1` — VIS H.264 + audible A1 (AAC).
+ *   Tauri/Windows: ffmpeg mux. Browser: WebCodecs AAC. Neither may Fertig without an audio stream.
+ * - Secondary `exportVisOnly` — silent vis-only (no audio track), by design.
  */
 
 import {
+  assertPrimaryExportHasAudio,
   createOfflineFeatureExtractor,
   createVisualEngine,
   encodeAacFromPcm,
   muxAvcToMp4,
-  pcmToSowt,
+  pcmToWav,
   selectAvcEncoderConfig,
   silentFeatures,
   slicePcmWindow,
@@ -16,6 +19,8 @@ import {
   type OfflineFeatureExtractor,
   type PcmBuffer,
 } from "@ailexsi/visualz";
+import { isTauriRuntime } from "../tauri-runtime";
+import { muxVisA1WithFfmpeg } from "./tauri-ffmpeg";
 
 export type VisExportOptions = {
   width: number;
@@ -32,11 +37,22 @@ export type VisExportOptions = {
   /** PCM / feature time (source file) for a timeline time after trims. */
   featureTimeAt?: (timelineMs: number) => number;
   pcm: PcmBuffer | null;
-  /** Mux A1 into the same MP4 (primary). False = silent vis-only. */
-  muxAudio?: boolean;
   onProgress?: (ratio: number, frame: number, total: number) => void;
   signal?: AbortSignal;
+  /** Tauri save path — ffmpeg writes the muxed file here. */
+  destPath?: string;
+  /**
+   * Test seam for primary mux. Default: Tauri ffmpeg, else WebCodecs AAC.
+   * A fake that returns vis-only bytes is rejected by `assertPrimaryExportHasAudio`.
+   */
+  muxA1?: MuxA1Fn;
 };
+
+export type MuxA1Fn = (req: {
+  visBytes: Uint8Array;
+  wavBytes: Uint8Array;
+  destPath?: string;
+}) => Promise<{ bytes: Uint8Array; command?: string; probeJson?: string; writtenPath?: string }>;
 
 export type VisExportResult = {
   bytes: Uint8Array;
@@ -45,14 +61,29 @@ export type VisExportResult = {
   fps: number;
   frames: number;
   codec: string;
-  audio?: "aac/A1" | "pcm/A1";
+  /** Primary path only — never set for vis-only. */
+  audio?: "aac";
+  command?: string;
+  probeJson?: string;
+  writtenPath?: string;
+};
+
+export type EncodedVis = {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+  fps: number;
+  frames: number;
+  codec: string;
+  description: Uint8Array;
+  samples: AvcSample[];
 };
 
 function webCodecsUnavailableMessage(): string {
   return "FAIL: WebCodecs VideoEncoder is not available. H.264 MP4 is required; WebM is not a fallback.";
 }
 
-export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportResult> {
+async function encodeVisAvc(opts: VisExportOptions): Promise<EncodedVis> {
   if (typeof VideoEncoder === "undefined") {
     throw new Error(webCodecsUnavailableMessage());
   }
@@ -147,38 +178,130 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
     if (encodeError) throw encodeError;
     if (!description) throw new Error("FAIL: encoder did not emit AVC decoder config (avcC)");
 
-    let audio: VisExportResult["audio"];
-    let aac;
-    let pcmTrack;
-    if (opts.muxAudio) {
-      if (!opts.pcm) throw new Error("A1 audio is required for Export MP4");
-      const sliced = slicePcmWindow(opts.pcm, startMs, durationMs, opts.featureTimeAt);
-      try {
-        aac = await encodeAacFromPcm(sliced);
-        audio = "aac/A1";
-      } catch {
-        const sowt = pcmToSowt(sliced);
-        pcmTrack = {
-          sampleRate: sowt.sampleRate,
-          channels: sowt.channels,
-          data: sowt.data,
-          frames: sowt.frames,
-        };
-        audio = "pcm/A1";
-      }
-    }
     const bytes = muxAvcToMp4({
       width,
       height,
       fps,
       description,
       samples,
-      audio: aac,
-      pcm: pcmTrack,
     });
-    return { bytes, width, height, fps, frames: samples.length, codec: selected.codec, audio };
+    return { bytes, width, height, fps, frames: samples.length, codec: selected.codec, description, samples };
   } finally {
     try { encoder.close(); } catch { /* already closed */ }
     engine.destroy();
   }
+}
+
+/** Secondary path: silent VIS H.264. No A1. */
+export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportResult> {
+  const vis = await encodeVisAvc(opts);
+  return {
+    bytes: vis.bytes,
+    width: vis.width,
+    height: vis.height,
+    fps: vis.fps,
+    frames: vis.frames,
+    codec: vis.codec,
+  };
+}
+
+/**
+ * Attach A1 to already-encoded vis bytes. Cannot return success without an audio stream.
+ * Range WAV is the Loop IN/OUT window (or full A1) — same window as the vis encode.
+ */
+export async function attachA1Audio(opts: {
+  vis: EncodedVis;
+  pcm: PcmBuffer;
+  startMs: number;
+  durationMs: number;
+  featureTimeAt?: (timelineMs: number) => number;
+  destPath?: string;
+  muxA1?: MuxA1Fn;
+}): Promise<VisExportResult> {
+  const sliced = slicePcmWindow(opts.pcm, opts.startMs, opts.durationMs, opts.featureTimeAt);
+  const wavBytes = pcmToWav(sliced);
+  const useFfmpeg = Boolean(opts.muxA1) || isTauriRuntime();
+
+  let bytes: Uint8Array;
+  let command: string | undefined;
+  let probeJson: string | undefined;
+  let writtenPath: string | undefined;
+
+  if (useFfmpeg) {
+    const mux: MuxA1Fn =
+      opts.muxA1 ??
+      (async (req) =>
+        muxVisA1WithFfmpeg({
+          visBytes: req.visBytes,
+          wavBytes: req.wavBytes,
+          outPath: req.destPath,
+        }));
+    const muxed = await mux({
+      visBytes: opts.vis.bytes,
+      wavBytes,
+      destPath: opts.destPath,
+    });
+    bytes = muxed.bytes;
+    command = muxed.command;
+    probeJson = muxed.probeJson;
+    writtenPath = muxed.writtenPath;
+  } else {
+    let aac;
+    try {
+      aac = await encodeAacFromPcm(sliced);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `FAIL: AAC encoder could not mux A1 (${msg}). Browser Export MP4 needs WebCodecs AudioEncoder. On the Windows EXE, ffmpeg muxes VIS + A1. Vis-only is a separate button.`,
+      );
+    }
+    bytes = muxAvcToMp4({
+      width: opts.vis.width,
+      height: opts.vis.height,
+      fps: opts.vis.fps,
+      description: opts.vis.description,
+      samples: opts.vis.samples,
+      audio: aac,
+    });
+  }
+
+  assertPrimaryExportHasAudio(bytes, "aac", probeJson);
+  return {
+    bytes,
+    width: opts.vis.width,
+    height: opts.vis.height,
+    fps: opts.vis.fps,
+    frames: opts.vis.frames,
+    codec: opts.vis.codec,
+    audio: "aac",
+    command,
+    probeJson,
+    writtenPath,
+  };
+}
+
+/**
+ * Default Export MP4: one playable file — VIS H.264 + A1 AAC.
+ * Tauri: ffmpeg `-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 320k`.
+ * Browser: WebCodecs AAC mux, then the same audio-stream probe.
+ */
+export async function exportMp4(opts: VisExportOptions): Promise<VisExportResult> {
+  if (!opts.pcm) {
+    throw new Error("FAIL: A1 audio is required for Export MP4. Import audio first. Vis-only is a separate button.");
+  }
+  const vis = await encodeVisAvc(opts);
+  return attachA1Audio({
+    vis,
+    pcm: opts.pcm,
+    startMs: Math.max(0, opts.startMs ?? 0),
+    durationMs: Math.max(0, opts.durationMs),
+    featureTimeAt: opts.featureTimeAt,
+    destPath: opts.destPath,
+    muxA1: opts.muxA1,
+  });
+}
+
+/** Alias — primary path is never named exportVisOnly. */
+export async function exportVisWithA1(opts: VisExportOptions): Promise<VisExportResult> {
+  return exportMp4(opts);
 }

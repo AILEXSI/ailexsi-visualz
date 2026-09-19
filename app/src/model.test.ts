@@ -265,6 +265,19 @@ describe("style / mixer / timeline helpers", () => {
 });
 
 describe("resolveExportRange", () => {
+  it("Loop 01:29.88–02:19.91 → ~50s window (OUT-IN)", () => {
+    const song = placeAudio(createEmptyProject(), { ...SAMPLE, durationMs: 180_000, name: "song.wav" });
+    const p = setLoopRange(song, 89_880, 139_910);
+    const range = resolveExportRange(p);
+    expect(range.kind).toBe("loop");
+    expect(range.startMs).toBe(89_880);
+    expect(range.endMs).toBe(139_910);
+    expect(range.durationMs).toBe(50_030);
+    expect(exportFrameCount(range.durationMs, 30)).toBe(1501);
+    expect(visFileDurationSec(1501, 30)).toBeCloseTo(50.03, 2);
+    expect(formatExportRangeLine(range, 30)).toBe("Range: LOOP 01:29.88–02:19.91 · 1501 frames");
+  });
+
   it("Loop ON + IN/OUT → only that window; frames and file duration match OUT-IN", () => {
     const p = setLoopRange(placed(), 1_000, 4_000);
     const range = resolveExportRange(p);

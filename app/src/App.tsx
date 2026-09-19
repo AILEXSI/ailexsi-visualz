@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  assertPrimaryExportHasAudio,
   builtinScenes,
   catalogRendererIds,
   createOfflineFeatureExtractor,
   getCatalogEntry,
+  mp4HasSoundTrack,
   waveformPeaks,
   type OfflineFeatureExtractor,
   type PcmBuffer,
@@ -48,7 +50,8 @@ import {
 } from "./model";
 import { deserializeProject, loadRecents, pushRecent, serializeProject, VISUALZ_EXT, type RecentFile } from "./persist";
 import { cycleProductionScreen, type ProductionScreen } from "./screens";
-import { exportVisOnly } from "./export/vis-export";
+import { formatPrimaryExportFertig } from "./export/export-status";
+import { exportMp4, exportVisOnly } from "./export/vis-export";
 import { clampTimelineHeight, defaultTimelineHeight } from "./layout";
 import { isTauriRuntime } from "./tauri-runtime";
 import { pickTauriOpenPath, pickTauriSavePath, readTauriFileText, writeTauriFile } from "./tauri-save";
@@ -537,32 +540,41 @@ export function App() {
     try {
       const snapshot = project;
       const range = resolveExportRange(snapshot);
-      const result = await exportVisOnly({
+      const shared = {
         width: exportW,
         height: exportH,
         fps: exportFps,
         startMs: range.startMs,
         durationMs: range.durationMs,
         sceneId: sceneAt(snapshot, range.startMs),
-        sceneAt: (t) => sceneAt(snapshot, t),
-        paramsAt: (t) => paramsAt(snapshot, t),
-        featureTimeAt: (t) => featureTimeAt(snapshot, t),
+        sceneAt: (t: number) => sceneAt(snapshot, t),
+        paramsAt: (t: number) => paramsAt(snapshot, t),
+        featureTimeAt: (t: number) => featureTimeAt(snapshot, t),
         pcm,
-        muxAudio,
-        onProgress: (ratio, frame, total) => {
+        destPath: tauriPath ?? undefined,
+        onProgress: (ratio: number, frame: number, total: number) => {
           setExportProgress(`${frame}/${total} frames (${Math.round(ratio * 100)}%)`);
         },
-      });
+      };
+      const result = muxAudio ? await exportMp4(shared) : await exportVisOnly(shared);
+      if (muxAudio) {
+        assertPrimaryExportHasAudio(result.bytes, result.audio, result.probeJson);
+        if (!result.audio || !mp4HasSoundTrack(result.bytes)) {
+          throw new Error(
+            "FAIL: Export MP4 has no audio stream. Silent vis-only is not a success. A1 was not muxed.",
+          );
+        }
+      }
       const copy = new Uint8Array(result.bytes.byteLength);
       copy.set(result.bytes);
-      if (tauriPath) {
+      if (tauriPath && result.writtenPath !== tauriPath) {
         await writeTauriFile(tauriPath, copy);
-      } else if (handle) {
+      } else if (!tauriPath && handle) {
         const blob = new Blob([copy.buffer], { type: "video/mp4" });
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-      } else {
+      } else if (!tauriPath) {
         const blob = new Blob([copy.buffer], { type: "video/mp4" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
@@ -572,8 +584,18 @@ export function App() {
         a.remove();
         URL.revokeObjectURL(a.href);
       }
-      const audioBit = result.audio ? ` · audio: ${result.audio}` : "";
-      setExportProgress(`Fertig · ${result.frames} frames · ${result.codec} · ${result.bytes.byteLength} bytes${audioBit}`);
+      if (muxAudio) {
+        setExportProgress(
+          formatPrimaryExportFertig({
+            frames: result.frames,
+            codec: result.codec,
+            byteLength: result.bytes.byteLength,
+            range,
+          }),
+        );
+      } else {
+        setExportProgress(`Fertig · ${result.frames} frames · ${result.codec} · ${result.bytes.byteLength} bytes`);
+      }
       setStatus(`Exported ${name}`);
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));

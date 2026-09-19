@@ -96,7 +96,7 @@ describe("muxed A1 audio", () => {
     expect([...text.matchAll(/trak/g)].length).toBeGreaterThanOrEqual(2);
   });
 
-  it("WAV packet (sowt) is a valid audible fallback when AAC is missing", () => {
+  it("muxer can still write sowt — primary Export MP4 must not treat that as Fertig", () => {
     const pcm = new Uint8Array(480);
     const bytes = muxAvcToMp4({
       width: 64,
