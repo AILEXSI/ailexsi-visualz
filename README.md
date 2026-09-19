@@ -157,5 +157,5 @@ Fertig (primary only): `Fertig · N frames · codec · bytes · audio: aac · fr
 | Mixer A1 + Master | Implemented (not 64-stem) |
 | Loop-ranged export | Implemented (`resolveExportRange` on vis + A1) |
 | Window + timeline resize | Implemented (min 1280×720, splitter, lanes grow) |
-| LEXI Terrain Gold | Stages kept as separate catalog ids (never overwrite). Latest `lexi-terrain-gold` = MotionGate. `lexi-terrain-gold-field` = Field Draw (polylines + ridge points). Retained `lexi-terrain-gold-p12` = Pass 1+2 clock travel. |
+| LEXI Terrain Gold | Stages kept as separate catalog ids (never overwrite). Latest `lexi-terrain-gold` = MotionGate. Compare: `lexi-terrain-gold-field` Field Draw, `lexi-terrain-gold-field-plus` Field Draw Plus, `lexi-terrain-gold-hero` Hero Look. Retained `lexi-terrain-gold-p12` = Pass 1+2 clock travel. |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

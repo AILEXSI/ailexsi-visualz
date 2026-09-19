@@ -252,6 +252,20 @@ export {
   lexiTerrainGoldFieldScene,
 } from "./scenes/lexi-terrain-gold-field";
 export {
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_FAMILY,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_ID,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_MODE,
+  lexiTerrainGoldFieldPlusScene,
+} from "./scenes/lexi-terrain-gold-field-plus";
+export {
+  LEXI_TERRAIN_GOLD_HERO_DEFAULTS,
+  LEXI_TERRAIN_GOLD_HERO_FAMILY,
+  LEXI_TERRAIN_GOLD_HERO_ID,
+  LEXI_TERRAIN_GOLD_HERO_MODE,
+  lexiTerrainGoldHeroScene,
+} from "./scenes/lexi-terrain-gold-hero";
+export {
   LEXI_TERRAIN_GOLD_P12_DEFAULTS,
   LEXI_TERRAIN_GOLD_P12_FAMILY,
   LEXI_TERRAIN_GOLD_P12_ID,

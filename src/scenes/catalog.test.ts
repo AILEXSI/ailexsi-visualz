@@ -41,9 +41,13 @@ describe("VIS style registry", () => {
     expect(getCatalogEntry("lexi-terrain-gold-p12")?.renderer).toBe("lexi-terrain-gold-p12");
     expect(getCatalogEntry("lexi-terrain-gold-field")?.displayName).toBe("Terrain Gold · Field Draw");
     expect(getCatalogEntry("lexi-terrain-gold-field")?.renderer).toBe("lexi-terrain-gold-field");
+    expect(getCatalogEntry("lexi-terrain-gold-field-plus")?.displayName).toBe("Terrain Gold · Field Draw Plus");
+    expect(getCatalogEntry("lexi-terrain-gold-hero")?.displayName).toBe("Terrain Gold · Hero Look");
     expect(catalogEntriesFor("LEXI Terrain Gold").map((e) => e.id)).toEqual([
       "lexi-terrain-gold",
       "lexi-terrain-gold-field",
+      "lexi-terrain-gold-field-plus",
+      "lexi-terrain-gold-hero",
       "lexi-terrain-gold-p12",
     ]);
   });

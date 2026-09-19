@@ -7,6 +7,8 @@ import type { SceneParams } from "../types";
 import { KALEIDO_LOOP_PRESETS, type KaleidoPresetId } from "./kaleido-loop";
 import { LEXI_TERRAIN_GOLD_DEFAULTS } from "./lexi-terrain-gold";
 import { LEXI_TERRAIN_GOLD_FIELD_DEFAULTS } from "./lexi-terrain-gold-field";
+import { LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS } from "./lexi-terrain-gold-field-plus";
+import { LEXI_TERRAIN_GOLD_HERO_DEFAULTS } from "./lexi-terrain-gold-hero";
 import { LEXI_TERRAIN_GOLD_P12_DEFAULTS } from "./lexi-terrain-gold-p12";
 
 export const VIS_FAMILIES = [
@@ -55,6 +57,26 @@ export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
     renderer: "lexi-terrain-gold-field",
     mode: "loop-seamless",
     params: LEXI_TERRAIN_GOLD_FIELD_DEFAULTS,
+  },
+  {
+    id: "lexi-terrain-gold-field-plus",
+    displayName: "Terrain Gold · Field Draw Plus",
+    shortName: "Field Plus",
+    family: "LEXI Terrain Gold",
+    description: "Field Draw Plus — harder ridges, peak filaments, stronger Z. No dune fill.",
+    renderer: "lexi-terrain-gold-field-plus",
+    mode: "loop-seamless",
+    params: LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS,
+  },
+  {
+    id: "lexi-terrain-gold-hero",
+    displayName: "Terrain Gold · Hero Look",
+    shortName: "Hero Look",
+    family: "LEXI Terrain Gold",
+    description: "Hero Look canvas preview — thick ridge ribbons, volume fog, sparse bokeh.",
+    renderer: "lexi-terrain-gold-hero",
+    mode: "loop-seamless",
+    params: LEXI_TERRAIN_GOLD_HERO_DEFAULTS,
   },
   {
     id: "lexi-terrain-gold-p12",

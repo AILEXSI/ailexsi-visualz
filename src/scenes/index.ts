@@ -11,6 +11,8 @@ import { kickSunScene } from "./kick-sun";
 import { kaleidoLoopScene } from "./kaleido-loop";
 import { lexiTerrainGoldScene } from "./lexi-terrain-gold";
 import { lexiTerrainGoldFieldScene } from "./lexi-terrain-gold-field";
+import { lexiTerrainGoldFieldPlusScene } from "./lexi-terrain-gold-field-plus";
+import { lexiTerrainGoldHeroScene } from "./lexi-terrain-gold-hero";
 import { lexiTerrainGoldP12Scene } from "./lexi-terrain-gold-p12";
 
 export const builtinScenes: Scene[] = [
@@ -26,6 +28,8 @@ export const builtinScenes: Scene[] = [
   kaleidoLoopScene,
   lexiTerrainGoldScene,
   lexiTerrainGoldFieldScene,
+  lexiTerrainGoldFieldPlusScene,
+  lexiTerrainGoldHeroScene,
   lexiTerrainGoldP12Scene,
 ];
 
@@ -42,5 +46,7 @@ export {
   kaleidoLoopScene,
   lexiTerrainGoldScene,
   lexiTerrainGoldFieldScene,
+  lexiTerrainGoldFieldPlusScene,
+  lexiTerrainGoldHeroScene,
   lexiTerrainGoldP12Scene,
 };
