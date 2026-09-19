@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { muxAvcToMp4, readFourccAt } from "./mp4";
+import { mp4HasSoundTrack, muxAvcToMp4, readFourccAt } from "./mp4";
 import { avcEncoderCandidates, requiredAvcLevel } from "./avc";
 
 function fakeAvcC(): Uint8Array {
@@ -68,5 +68,47 @@ describe("AVC capability", () => {
     const level = requiredAvcLevel(1920, 1080, 30);
     expect(level?.label).toBe("4.0");
     expect(avcEncoderCandidates(1920, 1080, 30)[0]).toBe("avc1.420028");
+  });
+});
+
+describe("muxed A1 audio", () => {
+  it("adds one sound trak (mp4a) next to vis — player needs no extra file", () => {
+    const bytes = muxAvcToMp4({
+      width: 64,
+      height: 36,
+      fps: 30,
+      description: fakeAvcC(),
+      samples: [
+        { data: new Uint8Array([0, 0, 0, 8, 0x65, 1, 2, 3, 4, 5, 6, 7]), timestampUs: 0, durationUs: 33_333, key: true },
+      ],
+      audio: {
+        sampleRate: 48000,
+        channels: 2,
+        description: new Uint8Array([0x11, 0x90]),
+        samples: [{ data: new Uint8Array([1, 2, 3, 4]), timestampUs: 0, durationUs: 21_333 }],
+      },
+    });
+    const text = new TextDecoder().decode(bytes);
+    expect(text).toContain("avc1");
+    expect(text).toContain("mp4a");
+    expect(text).toContain("soun");
+    expect(mp4HasSoundTrack(bytes)).toBe(true);
+    expect([...text.matchAll(/trak/g)].length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("WAV packet (sowt) is a valid audible fallback when AAC is missing", () => {
+    const pcm = new Uint8Array(480);
+    const bytes = muxAvcToMp4({
+      width: 64,
+      height: 36,
+      fps: 30,
+      description: fakeAvcC(),
+      samples: [
+        { data: new Uint8Array([0, 0, 0, 8, 0x65, 1, 2, 3, 4, 5, 6, 7]), timestampUs: 0, durationUs: 33_333, key: true },
+      ],
+      pcm: { sampleRate: 48000, channels: 1, data: pcm, frames: 240 },
+    });
+    expect(mp4HasSoundTrack(bytes)).toBe(true);
+    expect(new TextDecoder().decode(bytes)).toContain("sowt");
   });
 });

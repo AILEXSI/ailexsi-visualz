@@ -1,6 +1,5 @@
 /**
- * First-party video-only ISO-BMFF muxer for AVC (H.264) WebCodecs output.
- * Inspired by Resonance Studio 5.6 `muxAvcToMp4` (no AAC in this slice).
+ * First-party ISO-BMFF muxer for AVC (H.264) plus optional A1 audio (AAC or PCM).
  * Sample tables never use JS spread — long vis exports stay stack-safe.
  */
 
@@ -9,6 +8,27 @@ export interface AvcSample {
   timestampUs: number;
   durationUs: number;
   key: boolean;
+}
+
+export interface AacSample {
+  data: Uint8Array;
+  timestampUs: number;
+  durationUs: number;
+}
+
+export interface AacTrack {
+  sampleRate: number;
+  channels: number;
+  description: Uint8Array;
+  samples: AacSample[];
+}
+
+/** Interleaved little-endian 16-bit PCM (WAV packet) when AAC is unavailable. */
+export interface PcmTrack {
+  sampleRate: number;
+  channels: number;
+  data: Uint8Array;
+  frames: number;
 }
 
 function concatParts(parts: readonly Uint8Array[]): Uint8Array {
@@ -251,12 +271,168 @@ function videoTrak(opts: {
   return box("trak", tkhd, mdia);
 }
 
+function descriptor(tag: number, payload: Uint8Array): Uint8Array {
+  const size = payload.length;
+  if (size < 128) return concatParts([u8(tag, size), payload]);
+  return concatParts([
+    u8(tag, 0x80 | ((size >> 21) & 0x7f), 0x80 | ((size >> 14) & 0x7f), 0x80 | ((size >> 7) & 0x7f), size & 0x7f),
+    payload,
+  ]);
+}
+
+function esdsFromAsc(asc: Uint8Array, bitrate: number): Uint8Array {
+  const dsi = descriptor(0x05, asc);
+  const decoderConfig = descriptor(
+    0x04,
+    concatParts([u8(0x40), u8(0x15), u8(0, 1, 0), u32(bitrate), u32(bitrate), dsi]),
+  );
+  const sl = descriptor(0x06, u8(0x02));
+  const es = descriptor(0x03, concatParts([u16(1), u8(0), decoderConfig, sl]));
+  return fullBox("esds", 0, 0, es);
+}
+
+function extractAsc(description: Uint8Array): Uint8Array {
+  if (description.length >= 8) {
+    const tag = String.fromCharCode(
+      description[4] ?? 0,
+      description[5] ?? 0,
+      description[6] ?? 0,
+      description[7] ?? 0,
+    );
+    if (tag === "esds") return description;
+  }
+  return description;
+}
+
+function audioTrakAac(opts: {
+  durationMovie: number;
+  sampleRate: number;
+  channels: number;
+  mediaDuration: number;
+  asc: Uint8Array;
+  samples: AacSample[];
+  sampleDeltas: number[];
+  chunkOffset: number;
+}): Uint8Array {
+  const stts = packedStts(opts.sampleDeltas);
+  const stsc = fullBox("stsc", 0, 0, u32(1), u32(1), u32(opts.samples.length), u32(1));
+  const stsz = stszBoxFromSamples(opts.samples);
+  const stco = fullBox("stco", 0, 0, u32(1), u32(opts.chunkOffset));
+  const mp4a = box(
+    "mp4a",
+    new Uint8Array(6),
+    u16(1),
+    u32(0),
+    u32(0),
+    u16(opts.channels),
+    u16(16),
+    u16(0),
+    u16(0),
+    u32(opts.sampleRate << 16),
+    esdsFromAsc(opts.asc, 320_000),
+  );
+  return finishAudioTrak(opts.durationMovie, opts.sampleRate, opts.mediaDuration, stts, stsc, stsz, stco, mp4a);
+}
+
+function audioTrakPcm(opts: {
+  durationMovie: number;
+  sampleRate: number;
+  channels: number;
+  frames: number;
+  chunkOffset: number;
+  byteLength: number;
+}): Uint8Array {
+  const stts = packedStts([opts.frames]);
+  const stsc = fullBox("stsc", 0, 0, u32(1), u32(1), u32(1), u32(1));
+  const stszPayload = new Uint8Array(8);
+  writeU32(stszPayload, 0, opts.byteLength);
+  writeU32(stszPayload, 4, 1);
+  const stsz = fullBoxParts("stsz", 0, 0, [stszPayload]);
+  const stco = fullBox("stco", 0, 0, u32(1), u32(opts.chunkOffset));
+  const sowt = box(
+    "sowt",
+    new Uint8Array(6),
+    u16(1),
+    u32(0),
+    u32(0),
+    u16(opts.channels),
+    u16(16),
+    u16(0),
+    u16(0),
+    u32(opts.sampleRate << 16),
+  );
+  return finishAudioTrak(opts.durationMovie, opts.sampleRate, opts.frames, stts, stsc, stsz, stco, sowt);
+}
+
+function finishAudioTrak(
+  durationMovie: number,
+  sampleRate: number,
+  mediaDuration: number,
+  stts: Uint8Array,
+  stsc: Uint8Array,
+  stsz: Uint8Array,
+  stco: Uint8Array,
+  sampleEntry: Uint8Array,
+): Uint8Array {
+  const stsd = fullBox("stsd", 0, 0, u32(1), sampleEntry);
+  const stbl = box("stbl", stsd, stts, stsc, stsz, stco);
+  const dref = fullBox("dref", 0, 0, u32(1), fullBox("url ", 0, 1));
+  const dinf = box("dinf", dref);
+  const smhd = fullBox("smhd", 0, 0, u16(0), u16(0));
+  const minf = box("minf", smhd, dinf, stbl);
+  const hdlr = fullBox(
+    "hdlr",
+    0,
+    0,
+    u32(0),
+    fourcc("soun"),
+    u32(0),
+    u32(0),
+    u32(0),
+    asciiPad("SoundHandler", 13),
+  );
+  const mdhd = fullBox(
+    "mdhd",
+    0,
+    0,
+    u32(0),
+    u32(0),
+    u32(sampleRate),
+    u32(mediaDuration),
+    u16(0x55c4),
+    u16(0),
+  );
+  const mdia = box("mdia", mdhd, hdlr, minf);
+  const tkhd = fullBox(
+    "tkhd",
+    0,
+    0x000007,
+    u32(0),
+    u32(0),
+    u32(2),
+    u32(0),
+    u32(durationMovie),
+    u32(0),
+    u32(0),
+    u16(0),
+    u16(0),
+    u16(0),
+    u16(0),
+    identityMatrix(),
+    u32(0),
+    u32(0),
+  );
+  return box("trak", tkhd, mdia);
+}
+
 export function muxAvcToMp4(opts: {
   width: number;
   height: number;
   fps: number;
   description: Uint8Array;
   samples: AvcSample[];
+  audio?: AacTrack;
+  pcm?: PcmTrack;
 }): Uint8Array {
   if (opts.samples.length === 0) throw new Error("No encoded samples to mux");
   const avcC = extractAvcC(opts.description);
@@ -267,9 +443,28 @@ export function muxAvcToMp4(opts: {
     Math.max(1, Math.round((s.durationUs / 1_000_000) * timescale)),
   );
   const videoMediaDuration = sampleDeltas.reduce((a, b) => a + b, 0);
-  const durationMovie = videoMediaDuration;
+  const aac = opts.audio && opts.audio.samples.length > 0 ? opts.audio : undefined;
+  const pcm = !aac && opts.pcm && opts.pcm.frames > 0 ? opts.pcm : undefined;
+  const audioDeltas = aac
+    ? aac.samples.map((s) => Math.max(1, Math.round((s.durationUs / 1_000_000) * aac.sampleRate)))
+    : [];
+  const audioMediaDuration = aac
+    ? audioDeltas.reduce((a, b) => a + b, 0)
+    : pcm
+      ? pcm.frames
+      : 0;
+  const audioRate = aac?.sampleRate ?? pcm?.sampleRate ?? timescale;
+  const audioDurationMovie = audioMediaDuration
+    ? Math.max(1, Math.round((audioMediaDuration / audioRate) * timescale))
+    : 0;
+  const durationMovie = Math.max(videoMediaDuration, audioDurationMovie);
   const videoPayload = concatSamplePayloads(opts.samples);
-  const mdat = box("mdat", videoPayload);
+  const audioPayload = aac
+    ? concatSamplePayloads(aac.samples)
+    : pcm
+      ? pcm.data
+      : new Uint8Array(0);
+  const mdat = box("mdat", videoPayload, audioPayload);
   const mdatHeaderSize = 8;
 
   const ftyp = box(
@@ -282,7 +477,8 @@ export function muxAvcToMp4(opts: {
     fourcc("mp41"),
   );
 
-  const buildMoov = (videoOffset: number): Uint8Array => {
+  const nextTrackId = aac || pcm ? 3 : 2;
+  const buildMoov = (videoOffset: number, audioOffset: number): Uint8Array => {
     const video = videoTrak({
       width: opts.width,
       height: opts.height,
@@ -294,6 +490,27 @@ export function muxAvcToMp4(opts: {
       sampleDeltas,
       chunkOffset: videoOffset,
     });
+    const audioBox = aac
+      ? audioTrakAac({
+          durationMovie,
+          sampleRate: aac.sampleRate,
+          channels: aac.channels,
+          mediaDuration: audioMediaDuration,
+          asc: extractAsc(aac.description),
+          samples: aac.samples,
+          sampleDeltas: audioDeltas,
+          chunkOffset: audioOffset,
+        })
+      : pcm
+        ? audioTrakPcm({
+            durationMovie,
+            sampleRate: pcm.sampleRate,
+            channels: pcm.channels,
+            frames: pcm.frames,
+            chunkOffset: audioOffset,
+            byteLength: pcm.data.length,
+          })
+        : undefined;
     const mvhd = fullBox(
       "mvhd",
       0,
@@ -314,15 +531,21 @@ export function muxAvcToMp4(opts: {
       u32(0),
       u32(0),
       u32(0),
-      u32(2),
+      u32(nextTrackId),
     );
-    return box("moov", mvhd, video);
+    return audioBox ? box("moov", mvhd, video, audioBox) : box("moov", mvhd, video);
   };
 
-  let moov = buildMoov(0);
+  let moov = buildMoov(0, 0);
   const videoOffset = ftyp.length + moov.length + mdatHeaderSize;
-  moov = buildMoov(videoOffset);
+  const audioOffset = videoOffset + videoPayload.length;
+  moov = buildMoov(videoOffset, audioOffset);
   return concatParts([ftyp, moov, mdat]);
+}
+
+export function mp4HasSoundTrack(bytes: Uint8Array): boolean {
+  const text = new TextDecoder().decode(bytes);
+  return text.includes("soun") && (text.includes("mp4a") || text.includes("sowt"));
 }
 
 export function readFourccAt(bytes: Uint8Array, offset: number): string {

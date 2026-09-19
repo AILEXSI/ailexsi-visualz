@@ -21,7 +21,7 @@ Gold standard: **resonance-wave** (Resonance Hero). New scenes that miss this ba
 | `examples/engine-host.html` as canonical host | IMPLEMENTED (needs `npm run build`) |
 | `examples/demo.html` inline renderer | DEPRECATED (kept, not the engine) |
 | Spectrum / Aurora at Hero bar | PLANNED |
-| Capture/export in production | Arranger vis-only H.264 (`npm run dev` → Export). AAC mux not in this slice. |
+| Capture/export in production | Arranger **Export MP4** = H.264 + A1 audio. Vis-only is a secondary option. |
 
 ## Pipeline that exists
 

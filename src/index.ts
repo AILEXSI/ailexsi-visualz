@@ -264,5 +264,7 @@ export {
   unsupportedAvcEncoderMessage,
 } from "./export/avc";
 export type { AvcEncoderSelection } from "./export/avc";
-export { muxAvcToMp4 } from "./export/mp4";
-export type { AvcSample } from "./export/mp4";
+export { muxAvcToMp4, mp4HasSoundTrack } from "./export/mp4";
+export type { AvcSample, AacSample, AacTrack, PcmTrack } from "./export/mp4";
+export { encodeAacFromPcm, aacAudioSpecificConfigIsUsable, AAC_BITRATE } from "./export/aac";
+export { slicePcmWindow, pcmToSowt, slicedPcmIsAudible } from "./export/pcm-slice";

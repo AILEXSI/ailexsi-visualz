@@ -452,6 +452,15 @@ button.loop-armed { border-color: var(--in); color: var(--in); }
 .export-row { display: flex; gap: 12px; margin: 12px 0; }
 .export-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .export-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.export-visonly {
+  margin-top: 10px;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  text-decoration: underline;
+}
 .export-range {
   font-family: var(--mono);
   font-size: 13px;

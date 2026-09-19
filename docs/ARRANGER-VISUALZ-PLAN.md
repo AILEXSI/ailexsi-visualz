@@ -257,11 +257,11 @@ App / Tauri version stays **0.4.0** (MSI-safe numeric).
 
 ## 10. Window / timeline resize + loop-ranged export + Terrain Gold
 
-Still **1 VIS + 1 A1**. No Director, no audio mux.
+Still **1 VIS + 1 A1**. No Director.
 
 | Item | What |
 |------|------|
 | Window | Tauri `resizable: true`, `minWidth` 1280, `minHeight` 720, no max lock. Preview / Timeline / Mixer flex with the frame. Transport + export dialog wrap / scroll so they do not clip. |
 | Timeline height | Vertical splitter under Preview. Default `defaultTimelineHeight(window)` ≈ 220–280px at typical sizes; larger windows give the timeline more pixels (cap 480). Lanes share that height (`min-height: 84px`) so A1 waveform stays readable when Mixer is open. Zoom px/s + Fit unchanged; long tracks scroll horizontally. |
-| Export range | Shared `resolveExportRange(project)` for preview loop and export. Loop ON + valid IN/OUT → `[IN, OUT)`, `frames = round((OUT-IN)/1000*fps)`. Loop OFF → full timeline. Loop ON without a region → FULL + dialog warning (does not invent IN/OUT). Dialog: `Range: LOOP mm:ss.cs–mm:ss.cs · N frames` or `Range: FULL · N frames`. Fertig line unchanged. Default 1920×1080 @ 30. Audio still not muxed. |
+| Export | **Primary: Export MP4** = VIS H.264 + A1 (AAC ~320k, WAV/`sowt` if AAC missing) in one playable file. Same `resolveExportRange`: Loop ON + IN/OUT → that window (sync at IN); Loop OFF → full; Loop ON without region → FULL + warning. Dialog title **Export MP4**, body “Visual + A1 audio. Range follows Loop if active.” Fertig: `… · audio: aac/A1`. Close stays disabled until mux finishes. **Secondary:** Export vis-only (no audio). |
 | LEXI Terrain Gold | Own family `LEXI Terrain Gold`, id `lexi-terrain-gold`, mode `loop-seamless`. Gold particle/wire dunes, perspective to horizon, mountain silhouette, fog, bokeh. Phase `fract(timeSec / 8)`. Bass→wave height, mid→line glow, highs→sparkle. No hue-spin, no kaleido. LEXI family stays empty; Kaleido unchanged. |

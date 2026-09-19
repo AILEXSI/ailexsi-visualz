@@ -292,6 +292,17 @@ describe("resolveExportRange", () => {
     expect(formatExportRangeLine(range, 30)).toBe("Range: FULL · 375 frames");
   });
 
+  it("muxed Export MP4 uses the same range as picture (loop vs full)", () => {
+    const looped = setLoopRange(placed(), 1_000, 4_000);
+    const full = toggleLoop(looped);
+    expect(resolveExportRange(looped).durationMs).toBe(3_000);
+    expect(exportFrameCount(resolveExportRange(looped).durationMs, 30)).toBe(90);
+    expect(visFileDurationSec(90, 30)).toBeCloseTo(3, 6);
+    expect(resolveExportRange(full).durationMs).toBe(12_500);
+    expect(exportFrameCount(resolveExportRange(full).durationMs, 30)).toBe(375);
+    expect(visFileDurationSec(375, 30)).toBeCloseTo(12.5, 6);
+  });
+
   it("Loop ON without IN/OUT does not invent a region — FULL + warning", () => {
     const p = { ...placed(), loop: true, inPointMs: null, outPointMs: null };
     const range = resolveExportRange(p);

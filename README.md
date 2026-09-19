@@ -20,7 +20,7 @@ The renderer is the Visualz cinematic engine (Canvas2D Hero + WebGL2 post). **Re
 | VIS | Registry families: LEXI, **LEXI Terrain Gold**, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click applies immediately. Cycle ◀ ▶ / `[` `]` still works. |
 | Mixer | **A1 + Master** Mute / Solo / meters. Mute silences playback. |
 | Preview | `createVisualEngine` driven by live analysis (play) or offline PCM (seek) |
-| Export | Vis-only H.264 MP4 (picture of the visual layer; audio not muxed). Loop ON + IN/OUT → that range only; Loop OFF → full. Dialog shows `Range: LOOP …` or `Range: FULL …`. Default 1920×1080 @ 30. |
+| Export | **Export MP4** = VIS H.264 + A1 audio (AAC ~320k, PCM fallback) in one file. Loop ON + IN/OUT → that range; Loop OFF → full. Silent vis-only is a secondary link. |
 
 ## Run the Arranger (web)
 
@@ -39,7 +39,7 @@ Open `http://127.0.0.1:5173`. Tauri webview uses `npm run web:dev` on **1421** (
 6. Cycle visual functions with **◀ ▶** (or `[` `]`) or the VIS dropdown. Or open **VIS** and pick a family/style (including Kaleido Loop presets). The clip under the playhead changes; export uses `sceneAt` + clip params for each frame.
 7. Click a VIS clip to inspect **Style** / **Quelle**. Mute **A1** or **Master** in the mixer.
 8. **File → Speichern** writes `.visualz.json`. Laden restores VIS+A1, loop, markers, mixer, styles (re-import audio after load).
-9. **Export** — default 1920×1080 @ 30 (also 1280×720, 24/25). Loop ON with IN/OUT exports only that window. Audio is not muxed — use the file over the track elsewhere.
+9. **Export MP4** — Visual + A1 audio, default 1920×1080 @ 30. Loop ON with IN/OUT exports that window (picture and sound start together). `Export vis-only (no audio)` is the silent option.
 
 | Key | Action |
 |-----|--------|
@@ -111,8 +111,9 @@ npm run typecheck
 
 ## Export notes
 
-- **Shipped:** vis-only AVC MP4 via WebCodecs `VideoEncoder` + first-party ISO-BMFF mux. No WebM fallback.
-- **Not in this slice:** AAC mux (use the MP4 over the audio elsewhere), Frame Engine AILEXSI (no source video to decode).
+- **Shipped:** **Export MP4** = AVC + A1 (AAC 320k via `AudioEncoder`, PCM `sowt` fallback) in one ISO-BMFF file. Range follows Loop. No WebM fallback.
+- **Secondary:** Export vis-only (no audio).
+- **Not in this slice:** Frame Engine AILEXSI (no source video to decode).
 - Needs a Chromium-family browser with H.264 encode. If `VideoEncoder` is missing, Export fails with an explicit message.
 
 ## Docs
@@ -132,7 +133,8 @@ npm run typecheck
 | 1 VIS + 1 audio | Implemented |
 | Audio import → generated vis | Implemented |
 | Cinematic engine under preview | Implemented |
-| Vis-only H.264 export | Implemented (no AAC) |
+| Export MP4 (VIS + A1) | Implemented (AAC preferred, PCM fallback) |
+| Export vis-only (no audio) | Secondary option |
 | Cutter (1+1 trim / split / extract) | Implemented (not Studio V1/V2 transitions) |
 | Loop setzen (IN/OUT region + toggle) | Implemented |
 | VIS function cycle | Implemented (`createVisualEngine.setScene`) |

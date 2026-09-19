@@ -500,7 +500,7 @@ export function App() {
     }
   }, []);
 
-  const onExport = useCallback(async () => {
+  const onExport = useCallback(async (muxAudio: boolean) => {
     if (!project.vis.length) {
       setExportError("Import audio first — nothing to export");
       return;
@@ -548,6 +548,7 @@ export function App() {
         paramsAt: (t) => paramsAt(snapshot, t),
         featureTimeAt: (t) => featureTimeAt(snapshot, t),
         pcm,
+        muxAudio,
         onProgress: (ratio, frame, total) => {
           setExportProgress(`${frame}/${total} frames (${Math.round(ratio * 100)}%)`);
         },
@@ -571,7 +572,8 @@ export function App() {
         a.remove();
         URL.revokeObjectURL(a.href);
       }
-      setExportProgress(`Fertig · ${result.frames} frames · ${result.codec} · ${result.bytes.byteLength} bytes`);
+      const audioBit = result.audio ? ` · audio: ${result.audio}` : "";
+      setExportProgress(`Fertig · ${result.frames} frames · ${result.codec} · ${result.bytes.byteLength} bytes${audioBit}`);
       setStatus(`Exported ${name}`);
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));
@@ -836,7 +838,8 @@ export function App() {
         onWidth={setExportW}
         onHeight={setExportH}
         onFps={setExportFps}
-        onExport={() => void onExport()}
+        onExport={() => void onExport(true)}
+        onExportVisOnly={() => void onExport(false)}
         onClose={() => { if (!exporting) setExportOpen(false); }}
       />
     </div>

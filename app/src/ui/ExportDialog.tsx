@@ -12,6 +12,7 @@ interface Props {
   onHeight: (n: number) => void;
   onFps: (n: number) => void;
   onExport: () => void;
+  onExportVisOnly: () => void;
   onClose: () => void;
 }
 
@@ -20,9 +21,9 @@ export function ExportDialog(props: Props) {
   return (
     <div className="modal-backdrop" data-testid="export-dialog">
       <div className="modal">
-        <h2>Export vis-only MP4</h2>
+        <h2>Export MP4</h2>
         <p className="muted">
-          H.264 of the visual layer. Audio is not muxed — use the file over the track elsewhere.
+          Visual + A1 audio. Range follows Loop if active.
         </p>
         <p className="export-range" data-testid="export-range">
           {props.rangeLine}
@@ -62,13 +63,28 @@ export function ExportDialog(props: Props) {
         {props.progress ? <p data-testid="export-progress">{props.progress}</p> : null}
         {props.error ? <p className="error" data-testid="export-error">{props.error}</p> : null}
         <div className="export-actions">
-          <button type="button" className="primary" onClick={props.onExport} disabled={props.busy}>
-            {props.busy ? "Encoding…" : "Export"}
+          <button
+            type="button"
+            className="primary"
+            data-testid="export-mp4-btn"
+            onClick={props.onExport}
+            disabled={props.busy}
+          >
+            {props.busy ? "Encoding…" : "Export MP4"}
           </button>
           <button type="button" onClick={props.onClose} disabled={props.busy}>
             Close
           </button>
         </div>
+        <button
+          type="button"
+          className="export-visonly"
+          data-testid="export-visonly-btn"
+          onClick={props.onExportVisOnly}
+          disabled={props.busy}
+        >
+          Export vis-only (no audio)
+        </button>
       </div>
     </div>
   );

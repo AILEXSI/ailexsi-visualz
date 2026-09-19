@@ -1,14 +1,17 @@
 /**
- * Vis-only H.264 export: cinematic engine frames → VideoEncoder → first-party MP4.
- * Audio is not muxed in this slice (picture is meant to sit over the audio elsewhere).
+ * Export MP4: cinematic VIS frames (H.264) + A1 audio when requested.
+ * Primary path muxes AAC (or PCM fallback). Vis-only is the silent option.
  */
 
 import {
   createOfflineFeatureExtractor,
   createVisualEngine,
+  encodeAacFromPcm,
   muxAvcToMp4,
+  pcmToSowt,
   selectAvcEncoderConfig,
   silentFeatures,
+  slicePcmWindow,
   type AvcSample,
   type OfflineFeatureExtractor,
   type PcmBuffer,
@@ -29,6 +32,8 @@ export type VisExportOptions = {
   /** PCM / feature time (source file) for a timeline time after trims. */
   featureTimeAt?: (timelineMs: number) => number;
   pcm: PcmBuffer | null;
+  /** Mux A1 into the same MP4 (primary). False = silent vis-only. */
+  muxAudio?: boolean;
   onProgress?: (ratio: number, frame: number, total: number) => void;
   signal?: AbortSignal;
 };
@@ -40,6 +45,7 @@ export type VisExportResult = {
   fps: number;
   frames: number;
   codec: string;
+  audio?: "aac/A1" | "pcm/A1";
 };
 
 function webCodecsUnavailableMessage(): string {
@@ -141,14 +147,36 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
     if (encodeError) throw encodeError;
     if (!description) throw new Error("FAIL: encoder did not emit AVC decoder config (avcC)");
 
+    let audio: VisExportResult["audio"];
+    let aac;
+    let pcmTrack;
+    if (opts.muxAudio) {
+      if (!opts.pcm) throw new Error("A1 audio is required for Export MP4");
+      const sliced = slicePcmWindow(opts.pcm, startMs, durationMs, opts.featureTimeAt);
+      try {
+        aac = await encodeAacFromPcm(sliced);
+        audio = "aac/A1";
+      } catch {
+        const sowt = pcmToSowt(sliced);
+        pcmTrack = {
+          sampleRate: sowt.sampleRate,
+          channels: sowt.channels,
+          data: sowt.data,
+          frames: sowt.frames,
+        };
+        audio = "pcm/A1";
+      }
+    }
     const bytes = muxAvcToMp4({
       width,
       height,
       fps,
       description,
       samples,
+      audio: aac,
+      pcm: pcmTrack,
     });
-    return { bytes, width, height, fps, frames: samples.length, codec: selected.codec };
+    return { bytes, width, height, fps, frames: samples.length, codec: selected.codec, audio };
   } finally {
     try { encoder.close(); } catch { /* already closed */ }
     engine.destroy();
