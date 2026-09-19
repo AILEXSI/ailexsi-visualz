@@ -25,6 +25,7 @@ describe("LEXI Terrain Gold · Pass 1+2 (clock) retained stage", () => {
     });
     expect(builtinScenes.some((s) => s.id === "lexi-terrain-gold-p12")).toBe(true);
     expect(builtinScenes.some((s) => s.id === "lexi-terrain-gold")).toBe(true);
+    expect(builtinScenes.some((s) => s.id === "lexi-terrain-gold-field")).toBe(true);
   });
 
   it("clock-travel: u and surface key move when timeMs advances at zero audio", () => {

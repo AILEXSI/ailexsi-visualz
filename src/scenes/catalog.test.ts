@@ -39,8 +39,11 @@ describe("VIS style registry", () => {
     expect(getCatalogEntry("lexi-terrain-gold")?.displayName).toBe("Terrain Gold · MotionGate");
     expect(getCatalogEntry("lexi-terrain-gold-p12")?.displayName).toBe("Terrain Gold · Pass 1+2 (clock)");
     expect(getCatalogEntry("lexi-terrain-gold-p12")?.renderer).toBe("lexi-terrain-gold-p12");
+    expect(getCatalogEntry("lexi-terrain-gold-field")?.displayName).toBe("Terrain Gold · Field Draw");
+    expect(getCatalogEntry("lexi-terrain-gold-field")?.renderer).toBe("lexi-terrain-gold-field");
     expect(catalogEntriesFor("LEXI Terrain Gold").map((e) => e.id)).toEqual([
       "lexi-terrain-gold",
+      "lexi-terrain-gold-field",
       "lexi-terrain-gold-p12",
     ]);
   });

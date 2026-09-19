@@ -6,6 +6,7 @@
 import type { SceneParams } from "../types";
 import { KALEIDO_LOOP_PRESETS, type KaleidoPresetId } from "./kaleido-loop";
 import { LEXI_TERRAIN_GOLD_DEFAULTS } from "./lexi-terrain-gold";
+import { LEXI_TERRAIN_GOLD_FIELD_DEFAULTS } from "./lexi-terrain-gold-field";
 import { LEXI_TERRAIN_GOLD_P12_DEFAULTS } from "./lexi-terrain-gold-p12";
 
 export const VIS_FAMILIES = [
@@ -44,6 +45,16 @@ export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
     renderer: "lexi-terrain-gold",
     mode: "loop-seamless",
     params: LEXI_TERRAIN_GOLD_DEFAULTS,
+  },
+  {
+    id: "lexi-terrain-gold-field",
+    displayName: "Terrain Gold · Field Draw",
+    shortName: "Field Draw",
+    family: "LEXI Terrain Gold",
+    description: "Polylines + ridge points in the heightfield. 100% audio motion. No dune fill.",
+    renderer: "lexi-terrain-gold-field",
+    mode: "loop-seamless",
+    params: LEXI_TERRAIN_GOLD_FIELD_DEFAULTS,
   },
   {
     id: "lexi-terrain-gold-p12",

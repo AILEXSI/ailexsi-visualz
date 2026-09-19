@@ -244,6 +244,14 @@ export {
   terrainPhase,
 } from "./scenes/lexi-terrain-gold";
 export {
+  LEXI_TERRAIN_GOLD_FIELD_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FIELD_FAMILY,
+  LEXI_TERRAIN_GOLD_FIELD_ID,
+  LEXI_TERRAIN_GOLD_FIELD_KICK_TAU,
+  LEXI_TERRAIN_GOLD_FIELD_MODE,
+  lexiTerrainGoldFieldScene,
+} from "./scenes/lexi-terrain-gold-field";
+export {
   LEXI_TERRAIN_GOLD_P12_DEFAULTS,
   LEXI_TERRAIN_GOLD_P12_FAMILY,
   LEXI_TERRAIN_GOLD_P12_ID,

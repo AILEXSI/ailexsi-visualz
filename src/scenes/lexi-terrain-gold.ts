@@ -2,7 +2,7 @@
  * LEXI Terrain Gold · MotionGate (latest / default id `lexi-terrain-gold`).
  * 100% audio-driven motion. timeMs is decay/integration only.
  * Retention: new LEXI Terrain Gold stages are new catalog ids. Never overwrite this
- * or older stages (see `lexi-terrain-gold-p12.ts` for Pass 1+2 clock travel).
+ * or older stages (`lexi-terrain-gold-p12`, `lexi-terrain-gold-field`).
  */
 
 import type { Scene, SceneContext, SceneParams } from "../types";
@@ -102,10 +102,20 @@ export function terrainMotionEnergy(
 export function stepTerrainMotion(
   state: TerrainMotionState,
   features: Pick<AudioFeatures, "timeMs" | "rms" | "bass" | "kick" | "beatPulse">,
-  opts: { flowSpeed?: number; periodSec?: number; dt?: number } = {},
+  opts: {
+    flowSpeed?: number;
+    periodSec?: number;
+    dt?: number;
+    /** Kick envelope tau in seconds. MotionGate default 0.16. Field Draw uses 0.5 (0.3–0.8s). */
+    kickTau?: number;
+    /** Extra travel scale (Field Draw: lowMid). Default 1 — MotionGate unchanged. */
+    travelScale?: number;
+  } = {},
 ): TerrainMotionState {
   const periodSec = Math.max(1e-6, opts.periodSec ?? LEXI_TERRAIN_GOLD_PERIOD_SEC);
   const flowSpeed = num(opts.flowSpeed, 0.35);
+  const kickTau = Math.max(0.05, opts.kickTau ?? 0.16);
+  const travelScale = Math.max(0, opts.travelScale ?? 1);
   let dt = opts.dt;
   if (dt == null) {
     dt =
@@ -117,7 +127,7 @@ export function stepTerrainMotion(
   state.lastTimeMs = features.timeMs;
 
   const kickIn = clamp01(features.kick ?? features.beatPulse ?? 0);
-  state.kickEnv = Math.max(kickIn, state.kickEnv * Math.exp(-dt / 0.16));
+  state.kickEnv = Math.max(kickIn, state.kickEnv * Math.exp(-dt / kickTau));
   if (state.kickEnv < 1e-4) state.kickEnv = 0;
 
   const raw = terrainMotionEnergy(features, state.kickEnv);
@@ -125,7 +135,7 @@ export function stepTerrainMotion(
   state.gate = state.gate + (raw - state.gate) * smooth;
   if (state.gate < 1e-4) state.gate = 0;
 
-  const du = state.gate * flowSpeed * dt / periodSec;
+  const du = state.gate * flowSpeed * travelScale * dt / periodSec;
   state.u += du;
   state.u -= Math.floor(state.u);
   return state;
