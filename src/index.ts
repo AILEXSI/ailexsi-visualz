@@ -243,6 +243,13 @@ export {
   LEXI_TERRAIN_GOLD_MODE,
   terrainPhase,
 } from "./scenes/lexi-terrain-gold";
+export {
+  LEXI_TERRAIN_GOLD_P12_DEFAULTS,
+  LEXI_TERRAIN_GOLD_P12_FAMILY,
+  LEXI_TERRAIN_GOLD_P12_ID,
+  LEXI_TERRAIN_GOLD_P12_MODE,
+  lexiTerrainGoldP12Scene,
+} from "./scenes/lexi-terrain-gold-p12";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";

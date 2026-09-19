@@ -157,5 +157,5 @@ Fertig (primary only): `Fertig · N frames · codec · bytes · audio: aac · fr
 | Mixer A1 + Master | Implemented (not 64-stem) |
 | Loop-ranged export | Implemented (`resolveExportRange` on vis + A1) |
 | Window + timeline resize | Implemented (min 1280×720, splitter, lanes grow) |
-| LEXI Terrain Gold | Implemented (own family, not Kaleido). Pass 1+2: `surfaceDensity` 1.4, `depthAttenuation` 0.62, `flowSpeed` 0.35, `fogDensity` 0.78, `fogHeight` 0.38, `bloomCap` 0.55, `horizonY` 0.42, `mountainScale` 1.15, `periodSec` 12. Pass 3+ deferred. |
+| LEXI Terrain Gold | Stages kept as separate catalog ids (never overwrite). Latest `lexi-terrain-gold` = MotionGate. Retained `lexi-terrain-gold-p12` = Pass 1+2 clock travel. |
 | Windows Tauri EXE scaffold | Implemented (`npm run tauri:exe` on Windows) |

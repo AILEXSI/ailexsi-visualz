@@ -6,6 +6,7 @@
 import type { SceneParams } from "../types";
 import { KALEIDO_LOOP_PRESETS, type KaleidoPresetId } from "./kaleido-loop";
 import { LEXI_TERRAIN_GOLD_DEFAULTS } from "./lexi-terrain-gold";
+import { LEXI_TERRAIN_GOLD_P12_DEFAULTS } from "./lexi-terrain-gold-p12";
 
 export const VIS_FAMILIES = [
   "LEXI",
@@ -33,15 +34,26 @@ export interface SceneCatalogEntry {
 }
 
 export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
+  // LEXI Terrain Gold stages: new stages = new ids. Never overwrite/delete an older stage.
   {
     id: "lexi-terrain-gold",
-    displayName: "Terrain Gold",
-    shortName: "Terrain",
+    displayName: "Terrain Gold · MotionGate",
+    shortName: "MotionGate",
     family: "LEXI Terrain Gold",
-    description: "Continuous gold dunes, depth fog — not Kaleido / not line soup",
+    description: "Latest: 100% audio-gated motion. Pass 1+2 look, MotionGate travel.",
     renderer: "lexi-terrain-gold",
     mode: "loop-seamless",
     params: LEXI_TERRAIN_GOLD_DEFAULTS,
+  },
+  {
+    id: "lexi-terrain-gold-p12",
+    displayName: "Terrain Gold · Pass 1+2 (clock)",
+    shortName: "P1+2 clock",
+    family: "LEXI Terrain Gold",
+    description: "Retained Pass 1+2: time-driven u/parx/motes + light bass ampLift.",
+    renderer: "lexi-terrain-gold-p12",
+    mode: "loop-seamless",
+    params: LEXI_TERRAIN_GOLD_P12_DEFAULTS,
   },
   {
     id: "resonance-wave",

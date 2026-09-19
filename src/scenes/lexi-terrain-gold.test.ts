@@ -57,6 +57,7 @@ describe("LEXI Terrain Gold Pass 1+2", () => {
       mid: "#ffd27a",
       near: "#fff4d2",
     });
+    expect(getCatalogEntry("lexi-terrain-gold")?.displayName).toBe("Terrain Gold · MotionGate");
     expect(getCatalogEntry("lexi-terrain-gold")?.params).toMatchObject({
       surfaceDensity: 1.4,
       fogDensity: 0.78,
