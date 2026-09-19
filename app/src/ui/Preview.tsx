@@ -9,6 +9,12 @@ import {
 } from "@ailexsi/visualz";
 import { clipAtTime, effectiveGain, featureTimeAt, sceneAt, type MixerState, type Project } from "../model";
 
+/** One MediaElementSource per <audio> — the element cannot be re-sourced after close. */
+const AUDIO_GRAPHS = new WeakMap<
+  HTMLAudioElement,
+  { ctx: AudioContext; gain: GainNode; meter: AnalyserNode; live: FeatureExtractor }
+>();
+
 interface Props {
   project: Project;
   playing: boolean;
@@ -25,7 +31,6 @@ export function Preview(props: Props) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const meterRef = useRef<AnalyserNode | null>(null);
-  const hookedUrl = useRef<string | null>(null);
   const sceneNow = sceneAt(props.project, props.project.playheadMs);
   const clip = clipAtTime(props.project.vis, props.project.playheadMs);
   const styleKey = `${sceneNow}:${JSON.stringify(clip?.params ?? {})}`;
@@ -69,39 +74,33 @@ export function Preview(props: Props) {
 
   useEffect(() => {
     const audio = props.audioEl;
-    const url = props.project.source?.objectUrl ?? null;
-    if (!audio || !url) {
-      liveRef.current?.disconnect();
-      liveRef.current = null;
-      hookedUrl.current = null;
-      return;
+    if (!audio) return;
+    let graph = AUDIO_GRAPHS.get(audio);
+    if (!graph) {
+      const ctx = new AudioContext();
+      const src = ctx.createMediaElementSource(audio);
+      const gain = ctx.createGain();
+      const meter = ctx.createAnalyser();
+      meter.fftSize = 512;
+      src.connect(gain);
+      gain.connect(meter);
+      meter.connect(ctx.destination);
+      graph = { ctx, gain, meter, live: createFeatureExtractor(ctx, src) };
+      AUDIO_GRAPHS.set(audio, graph);
     }
-    if (hookedUrl.current === url && liveRef.current) return;
-    liveRef.current?.disconnect();
-    audioCtxRef.current?.close().catch(() => undefined);
-    const ctx = new AudioContext();
-    audioCtxRef.current = ctx;
-    const src = ctx.createMediaElementSource(audio);
-    const gain = ctx.createGain();
-    const meter = ctx.createAnalyser();
-    meter.fftSize = 512;
-    gainRef.current = gain;
-    meterRef.current = meter;
-    liveRef.current = createFeatureExtractor(ctx, src);
-    src.connect(gain);
-    gain.connect(meter);
-    meter.connect(ctx.destination);
-    hookedUrl.current = url;
+    audioCtxRef.current = graph.ctx;
+    gainRef.current = graph.gain;
+    meterRef.current = graph.meter;
+    liveRef.current = graph.live;
+    graph.gain.gain.value = effectiveGain(props.mixer);
     return () => {
-      liveRef.current?.disconnect();
-      liveRef.current = null;
-      ctx.close().catch(() => undefined);
-      if (audioCtxRef.current === ctx) audioCtxRef.current = null;
-      gainRef.current = null;
-      meterRef.current = null;
-      hookedUrl.current = null;
+      if (audioCtxRef.current === graph.ctx) audioCtxRef.current = null;
+      if (gainRef.current === graph.gain) gainRef.current = null;
+      if (meterRef.current === graph.meter) meterRef.current = null;
+      if (liveRef.current === graph.live) liveRef.current = null;
     };
-  }, [props.audioEl, props.project.source?.objectUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.audioEl]);
 
   useEffect(() => {
     if (gainRef.current) gainRef.current.gain.value = effectiveGain(props.mixer);

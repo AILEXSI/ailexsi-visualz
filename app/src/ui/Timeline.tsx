@@ -134,7 +134,7 @@ export function Timeline(props: Props) {
                 {formatTimecode(t).slice(0, 5)}
               </span>
             ))}
-            {project.markers.map((m) => (
+            {(project.markers ?? []).map((m) => (
               <span
                 key={m.id}
                 className="marker-flag"
