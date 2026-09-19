@@ -7,13 +7,15 @@ import {
   type OfflineFeatureExtractor,
   type VisualEngine,
 } from "@ailexsi/visualz";
-import { featureTimeAt, sceneAt, type Project } from "../model";
+import { clipAtTime, effectiveGain, featureTimeAt, sceneAt, type MixerState, type Project } from "../model";
 
 interface Props {
   project: Project;
   playing: boolean;
   audioEl: HTMLAudioElement | null;
   extractor: OfflineFeatureExtractor | null;
+  mixer: MixerState;
+  onLevels?: (a1: number, master: number) => void;
 }
 
 export function Preview(props: Props) {
@@ -21,8 +23,12 @@ export function Preview(props: Props) {
   const engineRef = useRef<VisualEngine | null>(null);
   const liveRef = useRef<FeatureExtractor | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
+  const meterRef = useRef<AnalyserNode | null>(null);
   const hookedUrl = useRef<string | null>(null);
   const sceneNow = sceneAt(props.project, props.project.playheadMs);
+  const clip = clipAtTime(props.project.vis, props.project.playheadMs);
+  const styleKey = `${sceneNow}:${JSON.stringify(clip?.params ?? {})}`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -51,13 +57,15 @@ export function Preview(props: Props) {
       engine.destroy();
       engineRef.current = null;
     };
-    // Engine is created once; scene updates go through setScene.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    engineRef.current?.setScene(sceneNow);
-  }, [sceneNow]);
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setScene(sceneNow);
+    if (clip?.params) engine.setParams(clip.params);
+  }, [styleKey, sceneNow, clip?.params]);
 
   useEffect(() => {
     const audio = props.audioEl;
@@ -74,30 +82,53 @@ export function Preview(props: Props) {
     const ctx = new AudioContext();
     audioCtxRef.current = ctx;
     const src = ctx.createMediaElementSource(audio);
+    const gain = ctx.createGain();
+    const meter = ctx.createAnalyser();
+    meter.fftSize = 512;
+    gainRef.current = gain;
+    meterRef.current = meter;
     liveRef.current = createFeatureExtractor(ctx, src);
-    src.connect(ctx.destination);
+    src.connect(gain);
+    gain.connect(meter);
+    meter.connect(ctx.destination);
     hookedUrl.current = url;
     return () => {
       liveRef.current?.disconnect();
       liveRef.current = null;
       ctx.close().catch(() => undefined);
       if (audioCtxRef.current === ctx) audioCtxRef.current = null;
+      gainRef.current = null;
+      meterRef.current = null;
       hookedUrl.current = null;
     };
   }, [props.audioEl, props.project.source?.objectUrl]);
+
+  useEffect(() => {
+    if (gainRef.current) gainRef.current.gain.value = effectiveGain(props.mixer);
+  }, [props.mixer]);
 
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
     const audio = props.audioEl;
     engine.setScene(sceneNow);
+    if (clip?.params) engine.setParams(clip.params);
 
     if (props.playing && audio) {
       engine.start();
+      const buf = new Uint8Array(meterRef.current?.fftSize ?? 512);
       let raf = 0;
       const tick = () => {
         const live = liveRef.current;
         if (live) engine.setFeatures(live.sample(audio.currentTime * 1000));
+        const meter = meterRef.current;
+        if (meter && props.onLevels) {
+          meter.getByteTimeDomainData(buf);
+          let peak = 0;
+          for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs((buf[i]! - 128) / 128));
+          const g = effectiveGain(props.mixer);
+          props.onLevels(peak, peak * g);
+        }
         raf = requestAnimationFrame(tick);
       };
       tick();
@@ -112,13 +143,14 @@ export function Preview(props: Props) {
     const t = featureTimeAt(props.project, props.project.playheadMs);
     engine.setFeatures(props.extractor ? props.extractor.sample(t) : silentFeatures(t));
     engine.step(1 / 30);
-  }, [props.playing, props.project, sceneNow, props.extractor, props.audioEl]);
+    props.onLevels?.(0, 0);
+  }, [props.playing, props.project, sceneNow, styleKey, props.extractor, props.audioEl, props.mixer, props.onLevels, clip?.params]);
 
   return (
     <div className="preview-wrap" data-testid="preview">
       <div className="preview-stage">
         <canvas ref={canvasRef} data-testid="visualizer-canvas" />
-        {!props.project.source ? (
+        {!props.project.source?.objectUrl ? (
           <div className="preview-empty">Import an audio file to generate visuals</div>
         ) : null}
       </div>

@@ -8,6 +8,7 @@ import { litaBloomScene } from "./lita-bloom";
 import { auroraRibbonScene } from "./aurora-ribbon";
 import { cymaticGridScene } from "./cymatic-grid";
 import { kickSunScene } from "./kick-sun";
+import { kaleidoLoopScene } from "./kaleido-loop";
 
 export const builtinScenes: Scene[] = [
   resonanceWaveScene,
@@ -19,6 +20,7 @@ export const builtinScenes: Scene[] = [
   particleFieldScene,
   tunnelSpiralScene,
   pulseOrbScene,
+  kaleidoLoopScene,
 ];
 
 export {
@@ -31,4 +33,5 @@ export {
   auroraRibbonScene,
   cymaticGridScene,
   kickSunScene,
+  kaleidoLoopScene,
 };

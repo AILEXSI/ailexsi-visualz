@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { builtinScenes, createOfflineFeatureExtractor, waveformPeaks, type OfflineFeatureExtractor, type PcmBuffer } from "@ailexsi/visualz";
 import {
+  builtinScenes,
+  catalogRendererIds,
+  createOfflineFeatureExtractor,
+  getCatalogEntry,
+  waveformPeaks,
+  type OfflineFeatureExtractor,
+  type PcmBuffer,
+  type SceneCatalogEntry,
+  type VisFamilyId,
+} from "@ailexsi/visualz";
+import {
+  addMarker,
+  applyStyle,
   clampPlayhead,
   clearInOut,
   clipAtTime,
@@ -9,17 +21,21 @@ import {
   cycleScene,
   extractRange,
   featureTimeAt,
+  fitZoomPxPerSec,
   liftRange,
   loopRangeOf,
+  paramsAt,
   placeAudio,
   playbackBounds,
   projectDurationMs,
   sceneAt,
+  selectVis,
   setInPoint,
   setLoopHere,
   setLoopRange,
   setOutPoint,
   setScene,
+  setVisQuelle,
   toggleLoop,
   sourceTimeAt,
   splitAtPlayhead,
@@ -28,19 +44,22 @@ import {
   trimOutToPlayhead,
   type Project,
 } from "./model";
+import { deserializeProject, loadRecents, pushRecent, serializeProject, VISUALZ_EXT, type RecentFile } from "./persist";
 import { cycleProductionScreen, type ProductionScreen } from "./screens";
 import { exportVisOnly } from "./export/vis-export";
 import { isTauriRuntime } from "./tauri-runtime";
-import { pickTauriSavePath, writeTauriFile } from "./tauri-save";
+import { pickTauriOpenPath, pickTauriSavePath, readTauriFileText, writeTauriFile } from "./tauri-save";
 import { Cutter } from "./ui/Cutter";
 import { ExportDialog } from "./ui/ExportDialog";
+import { Inspector } from "./ui/Inspector";
+import { Mixer } from "./ui/Mixer";
 import { Preview } from "./ui/Preview";
 import { Timeline } from "./ui/Timeline";
 import { Toolbar } from "./ui/Toolbar";
 import { Transport } from "./ui/Transport";
 
 const SCENES = builtinScenes.map((s) => ({ id: s.id, name: s.name }));
-const SCENE_IDS = SCENES.map((s) => s.id);
+const SCENE_IDS = catalogRendererIds();
 
 function nextClipAfter<T extends { startMs: number }>(clips: T[], fromStartMs: number): T | null {
   const later = clips.filter((c) => c.startMs >= fromStartMs - 0.001).sort((a, b) => a.startMs - b.startMs);
@@ -66,6 +85,17 @@ export function App() {
   const projectRef = useRef(project);
   projectRef.current = project;
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
+  const [fileOpen, setFileOpen] = useState(false);
+  const [visOpen, setVisOpen] = useState(false);
+  const [visFamily, setVisFamily] = useState<VisFamilyId | null>("Kaleido Loop");
+  const [recents, setRecents] = useState<RecentFile[]>(() => loadRecents());
+  const [a1Peak, setA1Peak] = useState(0);
+  const [masterPeak, setMasterPeak] = useState(0);
+  const projectFileRef = useRef<HTMLInputElement>(null);
+  const lastProjectPath = useRef<string | null>(null);
+  const lastProjectHandle = useRef<{
+    createWritable: () => Promise<{ write: (d: Blob) => Promise<void>; close: () => Promise<void> }>;
+  } | null>(null);
 
   const durationMs = projectDurationMs(project);
   const extractor = useMemo<OfflineFeatureExtractor | null>(
@@ -222,6 +252,104 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, [playing, seek]);
 
+  const remember = useCallback((name: string, json: string) => {
+    setRecents(pushRecent(name.endsWith(".json") ? name : `${name}${VISUALZ_EXT}`, json));
+  }, []);
+
+  const applyLoaded = useCallback((p: Project, label: string) => {
+    setPlaying(false);
+    audioRef.current?.pause();
+    setPcm(null);
+    setProject(p);
+    setStatus(p.source && !p.source.objectUrl ? `${label} — Audio erneut importieren` : label);
+  }, []);
+
+  const saveJsonToPath = useCallback(async (json: string, name: string, asNew: boolean) => {
+    const fileName = name.endsWith(".json") ? name : `${name}${VISUALZ_EXT}`;
+    if (isTauriRuntime()) {
+      let path = !asNew ? lastProjectPath.current : null;
+      if (!path) {
+        path = await pickTauriSavePath(fileName, [{ name: "Visualz", extensions: ["json"] }]);
+        if (!path) return;
+      }
+      lastProjectPath.current = path;
+      await writeTauriFile(path, new TextEncoder().encode(json));
+      remember(fileName, json);
+      setStatus(`Gespeichert · ${path}`);
+      return;
+    }
+    type SaveHandle = { createWritable: () => Promise<{ write: (d: Blob) => Promise<void>; close: () => Promise<void> }> };
+    let handle = !asNew ? lastProjectHandle.current : null;
+    const picker = (window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<SaveHandle> }).showSaveFilePicker;
+    if (!handle && typeof picker === "function") {
+      try {
+        handle = await picker({
+          suggestedName: fileName,
+          types: [{ description: "Visualz", accept: { "application/json": [".json"] } }],
+        });
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+    }
+    if (handle) {
+      lastProjectHandle.current = handle;
+      const blob = new Blob([json], { type: "application/json" });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      remember(fileName, json);
+      setStatus(`Gespeichert · ${fileName}`);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+    remember(fileName, json);
+    setStatus(`Gespeichert · ${fileName}`);
+  }, [remember]);
+
+  const saveProject = useCallback(async (asNew: boolean) => {
+    const p = projectRef.current;
+    const json = serializeProject(p);
+    await saveJsonToPath(json, p.name || "untitled", asNew);
+  }, [saveJsonToPath]);
+
+  const openProjectText = useCallback((text: string, label: string) => {
+    try {
+      const loaded = deserializeProject(text);
+      applyLoaded(loaded, `Laden · ${label}`);
+      remember(label, serializeProject(loaded));
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Laden failed");
+    }
+  }, [applyLoaded, remember]);
+
+  const openProject = useCallback(async () => {
+    if (isTauriRuntime()) {
+      const path = await pickTauriOpenPath([{ name: "Visualz", extensions: ["json"] }]);
+      if (!path) return;
+      lastProjectPath.current = path;
+      openProjectText(await readTauriFileText(path), path);
+      return;
+    }
+    const picker = (window as unknown as { showOpenFilePicker?: (opts: unknown) => Promise<Array<{ getFile: () => Promise<File> }>> }).showOpenFilePicker;
+    if (typeof picker === "function") {
+      try {
+        const [h] = await picker({ types: [{ description: "Visualz", accept: { "application/json": [".json"] } }] });
+        if (!h) return;
+        openProjectText(await (await h.getFile()).text(), "project");
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+      }
+    }
+    projectFileRef.current?.click();
+  }, [openProjectText]);
+
   const applyCut = useCallback((fn: (p: Project) => { project: Project; error?: string }, ok: string) => {
     setProject((p) => {
       const result = fn(p);
@@ -235,6 +363,33 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        lastProjectPath.current = null;
+        lastProjectHandle.current = null;
+        applyLoaded(createEmptyProject(), "Neu");
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        void openProject();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveProject(true);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void saveProject(false);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setExportOpen(true);
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         if (playing) pause();
@@ -268,9 +423,16 @@ export function App() {
         e.preventDefault();
         setProject((p) => clearInOut(p));
         setStatus("IN/OUT cleared");
-      } else if (e.key === "s" || e.key === "S") {
+      } else if (e.key === "s" || e.key === "S" || e.key === "v" || e.key === "V") {
         e.preventDefault();
         applyCut((p) => splitAtPlayhead(p), "Split");
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        setProject((p) => ({ ...p, zoomPxPerSec: fitZoomPxPerSec(projectDurationMs(p)), scrollMs: 0 }));
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        setProject((p) => addMarker(p));
+        setStatus("Marker");
       } else if (e.key === "q" || e.key === "Q") {
         e.preventDefault();
         applyCut((p) => trimInToPlayhead(p, true), "Ripple trim IN");
@@ -368,6 +530,7 @@ export function App() {
         durationMs: projectDurationMs(snapshot),
         sceneId: sceneAt(snapshot, 0),
         sceneAt: (t) => sceneAt(snapshot, t),
+        paramsAt: (t) => paramsAt(snapshot, t),
         featureTimeAt: (t) => featureTimeAt(snapshot, t),
         pcm,
         onProgress: (ratio, frame, total) => {
@@ -403,18 +566,86 @@ export function App() {
   }, [project, pcm, exportW, exportH, exportFps]);
 
   const activeScene = sceneAt(project, project.playheadMs);
+  const inspectClip =
+    project.vis.find((c) => c.id === project.selectedVisId) ?? clipAtTime(project.vis, project.playheadMs);
+  const styleId = inspectClip?.styleId ?? project.styleId ?? activeScene;
+
+  const pickStyle = useCallback((entry: SceneCatalogEntry) => {
+    setProject((p) =>
+      applyStyle(p, {
+        id: entry.id,
+        renderer: entry.renderer,
+        params: entry.params as Record<string, number | string | boolean> | undefined,
+      }),
+    );
+    setStatus(`Style · ${entry.displayName}`);
+  }, []);
+
+  const onLevels = useCallback((a1: number, master: number) => {
+    setA1Peak(a1);
+    setMasterPeak(master);
+  }, []);
+
+  useEffect(() => {
+    if (!fileOpen && !visOpen) return;
+    const close = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest(".menu-wrap")) return;
+      setFileOpen(false);
+      setVisOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [fileOpen, visOpen]);
 
   return (
     <div className={`app screen-${screen}`} data-screen={screen} translate="no">
       <Toolbar
         projectName={project.name}
         sceneId={activeScene}
+        styleId={styleId}
         scenes={scenes}
         screen={screen}
         exporting={exporting}
         canExport={project.vis.length > 0}
+        fileOpen={fileOpen}
+        visOpen={visOpen}
+        visFamily={visFamily}
+        recents={recents}
+        onToggleFile={() => {
+          setFileOpen((o) => !o);
+          setVisOpen(false);
+        }}
+        onToggleVis={() => {
+          setVisOpen((o) => !o);
+          setFileOpen(false);
+        }}
+        onVisFamily={setVisFamily}
+        onPickStyle={pickStyle}
+        onNew={() => {
+          lastProjectPath.current = null;
+          lastProjectHandle.current = null;
+          applyLoaded(createEmptyProject(), "Neu");
+          setFileOpen(false);
+        }}
+        onOpen={() => {
+          setFileOpen(false);
+          void openProject();
+        }}
+        onSave={() => {
+          setFileOpen(false);
+          void saveProject(false);
+        }}
+        onSaveAs={() => {
+          setFileOpen(false);
+          void saveProject(true);
+        }}
+        onOpenRecent={(r) => {
+          setFileOpen(false);
+          openProjectText(r.json, r.name);
+        }}
         onImport={() => fileRef.current?.click()}
-        onExport={() => { setExportOpen(true); setExportError(null); }}
+        onExport={() => { setExportOpen(true); setExportError(null); setFileOpen(false); }}
         onScene={(id) => setProject((p) => setScene(p, id))}
         onCycleScene={(d) => setProject((p) => cycleScene(p, SCENE_IDS, d))}
         onSelectScreen={setScreen}
@@ -431,12 +662,34 @@ export function App() {
           if (f) void importFile(f);
         }}
       />
-      <div className="stage">
+      <input
+        ref={projectFileRef}
+        type="file"
+        accept=".json,.visualz.json,application/json"
+        hidden
+        data-testid="project-file-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          void f.text().then((text) => openProjectText(text, f.name));
+        }}
+      />
+      <div className="workspace">
+        <Inspector
+          project={project}
+          clip={inspectClip}
+          onStyle={pickStyle}
+          onQuelle={(quelle) => setProject((p) => setVisQuelle(p, quelle))}
+        />
+        <div className="stage">
         <Preview
           project={project}
           playing={playing}
           audioEl={audioEl}
           extractor={extractor}
+          mixer={project.mixer}
+          onLevels={onLevels}
         />
         {screen === "cutter" ? (
           <Cutter
@@ -488,6 +741,21 @@ export function App() {
           cutter={screen === "cutter"}
           onSeek={seek}
           onZoom={(z) => setProject((p) => ({ ...p, zoomPxPerSec: z }))}
+          onScroll={(ms) => setProject((p) => ({ ...p, scrollMs: Math.max(0, ms) }))}
+          onFit={() => setProject((p) => ({ ...p, zoomPxPerSec: fitZoomPxPerSec(projectDurationMs(p)), scrollMs: 0 }))}
+          onMarker={() => {
+            setProject((p) => addMarker(p));
+            setStatus("Marker");
+          }}
+          onSelectVis={(id) => setProject((p) => selectVis(p, id))}
+          onVisStyle={(id) => {
+            setProject((p) => selectVis(p, id));
+            setVisOpen(true);
+            setFileOpen(false);
+            const entry = getCatalogEntry(projectRef.current.vis.find((c) => c.id === id)?.styleId ?? "");
+            if (entry) setVisFamily(entry.family);
+          }}
+          onVisQuelle={(id) => setProject((p) => setVisQuelle(selectVis(p, id), "A1"))}
           onTrimEdge={(edge, ms, ripple) => {
             applyCut((p) => trimEdgeAt(p, edge, ms, ripple), ripple ? "Ripple trim" : "Trim");
           }}
@@ -509,6 +777,13 @@ export function App() {
               return next;
             });
           }}
+        />
+        </div>
+        <Mixer
+          mixer={project.mixer}
+          a1Peak={a1Peak}
+          masterPeak={masterPeak}
+          onChange={(patch) => setProject((p) => ({ ...p, mixer: { ...p.mixer, ...patch } }))}
         />
       </div>
       <footer className="status" data-testid="status">{status}</footer>

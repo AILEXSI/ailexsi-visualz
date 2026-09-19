@@ -219,6 +219,23 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 
 export * from "./types";
 export { builtinScenes } from "./scenes";
+export {
+  SCENE_CATALOG,
+  VIS_FAMILIES,
+  catalogEntriesFor,
+  catalogRendererIds,
+  getCatalogEntry,
+} from "./scenes/catalog";
+export type { SceneCatalogEntry, VisFamilyId } from "./scenes/catalog";
+export {
+  KALEIDO_LOOP_FAMILY,
+  KALEIDO_LOOP_ID,
+  KALEIDO_LOOP_MODE,
+  KALEIDO_LOOP_PRESETS,
+  kaleidoLoopPhase,
+  kaleidoLoopState,
+  kaleidoPeriodSec,
+} from "./scenes/kaleido-loop";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";

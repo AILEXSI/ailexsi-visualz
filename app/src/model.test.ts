@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  addMarker,
+  applyStyle,
   clipEndMs,
   createEmptyProject,
   cycleScene,
+  effectiveGain,
   extractRange,
   featureTimeAt,
+  fitZoomPxPerSec,
   liftRange,
+  selectVis,
+  setVisQuelle,
   moveLoopRange,
   placeAudio,
   playbackBounds,
@@ -42,6 +48,8 @@ describe("1+1 project model", () => {
     expect(p.vis).toEqual([]);
     expect(p.source).toBeNull();
     expect(p.sceneId).toBe("resonance-wave");
+    expect(p.markers).toEqual([]);
+    expect(p.mixer.masterVolume).toBe(1);
     expect(projectDurationMs(p)).toBe(0);
   });
 
@@ -211,5 +219,43 @@ describe("loop setzen", () => {
     expect(moved.error).toBeUndefined();
     expect(moved.project.inPointMs).toBe(1_500);
     expect(moved.project.outPointMs).toBe(3_500);
+  });
+});
+
+describe("style / mixer / timeline helpers", () => {
+  it("applyStyle writes renderer + style id on the selected VIS clip", () => {
+    const next = applyStyle(placed(), {
+      id: "kaleido-loop-gold-gate",
+      renderer: "kaleido-loop",
+      params: { mirrors: 8, periodBeats: 8 },
+    });
+    expect(next.vis[0]?.sceneId).toBe("kaleido-loop");
+    expect(next.vis[0]?.styleId).toBe("kaleido-loop-gold-gate");
+    expect(next.vis[0]?.params?.mirrors).toBe(8);
+    expect(next.vis[0]?.quelle).toBe("A1");
+  });
+
+  it("selectVis + setVisQuelle write Quelle on that clip", () => {
+    const p = placed();
+    const id = p.vis[0]!.id;
+    const next = setVisQuelle(selectVis(p, id), "A1");
+    expect(next.selectedVisId).toBe(id);
+    expect(next.vis[0]?.quelle).toBe("A1");
+  });
+
+  it("addMarker and Fit stay on the 1+1 timeline", () => {
+    const marked = addMarker({ ...placed(), playheadMs: 2_000 });
+    expect(marked.markers).toHaveLength(1);
+    expect(marked.markers[0]?.timeMs).toBe(2_000);
+    expect(marked.markers[0]?.label).toBe("M1");
+    expect(fitZoomPxPerSec(12_500, 720)).toBeCloseTo(57.6, 5);
+  });
+
+  it("mute A1 or Master zeros gain; solo is stored with one track", () => {
+    const p = placed();
+    expect(effectiveGain(p.mixer)).toBe(1);
+    expect(effectiveGain({ ...p.mixer, a1Muted: true })).toBe(0);
+    expect(effectiveGain({ ...p.mixer, masterMuted: true })).toBe(0);
+    expect(effectiveGain({ ...p.mixer, a1Solo: true, a1Volume: 0.5, masterVolume: 0.8 })).toBe(0.4);
   });
 });

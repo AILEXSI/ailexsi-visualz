@@ -80,7 +80,7 @@ export function Transport(props: Props) {
           data-testid="split-btn"
           onClick={props.onSplit}
           disabled={!props.project.audio.length}
-          title="Split at playhead (S)"
+          title="Split at playhead (S / V)"
         >
           Split
         </button>

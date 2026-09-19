@@ -1,4 +1,4 @@
-/** 1 visual track + 1 audio track. Clips on those lanes may split; no mixer / extra stems. */
+/** 1 visual track + 1 audio track. Clips on those lanes may split. Mixer is A1 + Master only. */
 
 export const FRAME_MS = 1000 / 30;
 export const DEFAULT_SCENE_ID = "resonance-wave";
@@ -27,10 +27,31 @@ export interface AudioClip {
 export interface VisClip {
   id: string;
   sceneId: string;
+  styleId?: string;
+  quelle?: string;
+  params?: Record<string, number | string | boolean>;
   startMs: number;
   durationMs: number;
   sourceInMs: number;
   sourceOutMs: number;
+}
+
+export interface Marker {
+  id: string;
+  timeMs: number;
+  label: string;
+}
+
+export interface MixerState {
+  a1Muted: boolean;
+  a1Solo: boolean;
+  masterMuted: boolean;
+  a1Volume: number;
+  masterVolume: number;
+}
+
+export function createMixer(): MixerState {
+  return { a1Muted: false, a1Solo: false, masterMuted: false, a1Volume: 1, masterVolume: 1 };
 }
 
 export interface Project {
@@ -40,11 +61,15 @@ export interface Project {
   zoomPxPerSec: number;
   scrollMs: number;
   sceneId: string;
+  styleId?: string;
   inPointMs: number | null;
   outPointMs: number | null;
   source: AudioSource | null;
   audio: AudioClip[];
   vis: VisClip[];
+  markers: Marker[];
+  mixer: MixerState;
+  selectedVisId: string | null;
 }
 
 export type TimedClip = {
@@ -68,6 +93,9 @@ export function createEmptyProject(name = "Untitled Visualz"): Project {
     source: null,
     audio: [],
     vis: [],
+    markers: [],
+    mixer: createMixer(),
+    selectedVisId: null,
   };
 }
 
@@ -140,6 +168,13 @@ export function featureTimeAt(project: Project, timelineMs: number): number {
 export function sceneAt(project: Project, timelineMs: number): string {
   const clip = clipAtTime(project.vis, timelineMs);
   return clip?.sceneId ?? project.sceneId;
+}
+
+export function paramsAt(
+  project: Project,
+  timelineMs: number,
+): Record<string, number | string | boolean> | undefined {
+  return clipAtTime(project.vis, timelineMs)?.params;
 }
 
 export function editRangeOf(project: Project): { inMs: number; outMs: number } | null {
@@ -269,6 +304,8 @@ export function placeAudio(
   const vis: VisClip = {
     id: newId("vis"),
     sceneId: project.sceneId || DEFAULT_SCENE_ID,
+    styleId: project.styleId || project.sceneId || DEFAULT_SCENE_ID,
+    quelle: "A1",
     startMs,
     durationMs,
     sourceInMs: 0,
@@ -286,16 +323,75 @@ export function placeAudio(
   };
 }
 
-/** Apply scene to the vis clip under the playhead (or the only vis clip). */
-export function setScene(project: Project, sceneId: string): Project {
-  const hit = clipAtTime(project.vis, project.playheadMs);
-  let vis = project.vis;
-  if (hit) {
-    vis = project.vis.map((c) => (c.id === hit.id ? { ...c, sceneId } : c));
-  } else if (project.vis.length <= 1) {
-    vis = project.vis.map((c) => ({ ...c, sceneId }));
+function targetVis(project: Project): VisClip | null {
+  if (project.selectedVisId) {
+    return project.vis.find((c) => c.id === project.selectedVisId) ?? null;
   }
-  return { ...project, sceneId, vis };
+  return clipAtTime(project.vis, project.playheadMs);
+}
+
+/** Apply scene/style to the selected vis clip, else the clip under the playhead. */
+export function setScene(
+  project: Project,
+  sceneId: string,
+  extra?: { styleId?: string; params?: Record<string, number | string | boolean> },
+): Project {
+  const hit = targetVis(project);
+  const styleId = extra?.styleId ?? sceneId;
+  const patch = (c: VisClip): VisClip => ({
+    ...c,
+    sceneId,
+    styleId,
+    params: extra?.params ?? c.params,
+    quelle: c.quelle ?? "A1",
+  });
+  let vis = project.vis;
+  if (hit) vis = project.vis.map((c) => (c.id === hit.id ? patch(c) : c));
+  else if (project.vis.length <= 1) vis = project.vis.map(patch);
+  return { ...project, sceneId, styleId, vis, selectedVisId: hit?.id ?? project.selectedVisId };
+}
+
+export function applyStyle(
+  project: Project,
+  style: { id: string; renderer: string; params?: Record<string, number | string | boolean> },
+): Project {
+  return setScene(project, style.renderer, { styleId: style.id, params: style.params });
+}
+
+export function setVisQuelle(project: Project, quelle: string): Project {
+  const hit = targetVis(project);
+  if (!hit) return project;
+  return {
+    ...project,
+    vis: project.vis.map((c) => (c.id === hit.id ? { ...c, quelle } : c)),
+  };
+}
+
+export function selectVis(project: Project, id: string | null): Project {
+  return { ...project, selectedVisId: id };
+}
+
+export function addMarker(project: Project, timeMs = project.playheadMs): Project {
+  const n = project.markers.length + 1;
+  return {
+    ...project,
+    markers: [...project.markers, { id: newId("mk"), timeMs: Math.max(0, snapMs(timeMs)), label: `M${n}` }],
+  };
+}
+
+export function removeMarker(project: Project, id: string): Project {
+  return { ...project, markers: project.markers.filter((m) => m.id !== id) };
+}
+
+export function fitZoomPxPerSec(durationMs: number, viewPx = 720): number {
+  if (durationMs <= 0) return 80;
+  const z = viewPx / (durationMs / 1000);
+  return Math.max(20, Math.min(400, z));
+}
+
+export function effectiveGain(mixer: MixerState): number {
+  if (mixer.masterMuted || mixer.a1Muted) return 0;
+  return Math.max(0, Math.min(2, mixer.a1Volume * mixer.masterVolume));
 }
 
 export function cycleScene(project: Project, sceneIds: readonly string[], delta: number): Project {

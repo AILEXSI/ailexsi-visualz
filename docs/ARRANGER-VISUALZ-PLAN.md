@@ -1,6 +1,6 @@
 # Arranger-only Visualz — architecture plan
 
-Phase 1 capture of **this repo** (`@ailexsi/visualz` cinematic engine) and **read-only** Resonance Studio V5.6 (`https://github.com/AILEXSI/ailexsi-resonance-studio-v5.6`). Product cut: local-first Arranger with **1 visual track + 1 audio track**, audio→visuals, vis-only H.264 export. No Mixer or multi-track studio. Cutter + VIS function cycle were lifted later (see §8) without bringing V1/V2 transitions or the 64-stem mixer.
+Phase 1 capture of **this repo** (`@ailexsi/visualz` cinematic engine) and **read-only** Resonance Studio V5.6 (`https://github.com/AILEXSI/ailexsi-resonance-studio-v5.6`). Product cut: local-first Arranger with **1 visual track + 1 audio track**, audio→visuals, vis-only H.264 export. Still 1 VIS + 1 A1 — no 64-stem studio. File / Inspector / A1+Master mixer / Kaleido Loop were added later (see §8–§9) without V1/V2 transitions.
 
 Maps checked on 2026-09-18. Studio clone used for reading only; it is not modified and is not part of this tree.
 
@@ -142,11 +142,11 @@ This is still the 1+1 model (two tracks). Split creates more **clips**, not more
 | Studio / old visualz | Why gone |
 |----------------------|----------|
 | Cutter *transitions*, V1/V2 | No picture source except the engine — 1+1 trim/split was lifted instead |
-| Mixer, pan, solo, master, meters | One audio file, unity gain |
+| Mixer, pan, solo, master, meters (64-stem) | Later A1+Master only — see §9 |
 | Dynamic A3…A64, stem ZIP, chapter groups | One audio track |
 | VOL lane, Write Volume, clip fades/rate/lock | Out of scope |
-| Inspector / File overlay / Help sheet / Snap/Undo | Not required for this cut |
-| Tauri / IndexedDB project save | Local-first web host; blobs stay in-session |
+| Inspector / File overlay / Help sheet / Snap/Undo | Help/Snap/Undo still out; File + Inspector later — see §9 |
+| Tauri / IndexedDB project save | Later `.visualz.json` persist (no audio blob) — see §9 |
 | `examples/demo.html` inline sketch | Already deprecated; engine-host stays as library demo |
 | Studio LEXI catalog / vendored old Visualz | This repo’s cinematic scenes + post are the renderer |
 
@@ -157,11 +157,13 @@ This is still the 1+1 model (two tracks). Split creates more **clips**, not more
 Vite + React app under `app/`, same stack family as 5.6. Tauri 2 host under `src-tauri/` (Windows EXE / local deploy). Imports the engine via `@ailexsi/visualz` → `src/`.
 
 ```
-toolbar: Import · Export · ARRANGE|CUTTER · VIS prev/select/next · version
+toolbar: File · VIS · Import · Export · ARRANGE|CUTTER · VIS prev/select/next · version
 preview: createVisualEngine canvas (Hero + WebGL2 post)
+inspector: Style + Quelle for the selected / playhead VIS clip
 cutter:  IN/OUT · Split · trim/ripple · extract/lift · cut-strip (CUTTER screen)
-transport: Play / Pause / Stop / ±1f / Loop / IN / OUT / Split / timecode
-timeline: ruler + VIS lane + Audio lane + playhead (+ trim handles in Cutter)
+transport: Play / Pause / Stop / ±1f / Loop / Set Loop / IN / OUT / Clear / Split / timecode
+timeline: zoom px/s · Pan · Fit · Marker · ruler + VIS + A1 + playhead
+mixer:   A1 + Master Mute/Solo/meters
 ```
 
 Workflow:
@@ -232,4 +234,21 @@ Visualz (same 1+1 timeline):
 | Drag loop wash / handles | Move or resize IN/OUT (Studio `moveInOut`) |
 | Shift+Home / Shift+End | Jump to IN / OUT |
 
-No second loop-marker type. No mixer. Export still uses the full cut timeline, not the loop window.
+No second loop-marker type. Export still uses the full cut timeline, not the loop window.
+
+---
+
+## 9. Visualz parity + Kaleido Loop (approved deploy)
+
+Studio names win. Still **1 VIS + 1 A1**. Do not rebuild cinematic styles — wire `SCENE_CATALOG`.
+
+| Surface | What shipped |
+|---------|----------------|
+| **File** | Neu, Laden, Speichern, Speichern unter, Letzte Dateien, Export — Ctrl+N / O / S, Ctrl+Shift+S, Ctrl+E. Persist `.visualz.json` (`kind: ailexsi-visualz`, schema 1). Resonance `schemaVersion` 5 is read as a VIS+A1 subset. Audio blobs are not stored; reload asks to re-import audio. Recents: `localStorage` `ailexsi.visualz.recents`, max 8. |
+| **Timeline** | Zoom px/s (+/−), Pan, Fit (F), Marker (M), timecode. Split is S and Studio Cut **V**. |
+| **Inspector** | Click a VIS clip → Style + Quelle. Context menu Style / Quelle. Apply writes `styleId` / `sceneId` (renderer) / `params` / `quelle` on that clip. |
+| **VIS menu** | Families from the shared registry: LEXI, Classic, Flow, Geometry, Synthwave, Particle-Nebula, **Kaleido Loop**. Click = immediate apply. LEXI is listed empty (no LEXI paint in this engine). |
+| **Mixer** | A1 + Master only. Mute / Solo / meters. Mute zeros `effectiveGain`. One audio track. |
+| **Kaleido Loop** | Own family, not LEXI. Registry id `kaleido-loop`, family `Kaleido Loop`, mode `loop-seamless`. Params: mirrors 4\|8, periodBeats 8\|16, rotSpeed, bloom, hueDrift, pulseAmount. Phase `fract(timeSec / T)` so frame 0 == period end. Audio-reactive on intensity only (bass→bloom/core, mid→edges, beat→pulse). Presets: Gold Gate, Pink Core, Cyan Pulse. Neon gold/pink/cyan tunnel, no UI in the render. Test: 8 bars @ 120 BPM, frame 0 ≈ last frame ≤ 1 LSB after bloom. |
+
+App / Tauri version stays **0.4.0** (MSI-safe numeric).

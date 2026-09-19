@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import {
   formatTimecode,
   peaksForWindow,
@@ -14,6 +14,12 @@ interface Props {
   cutter: boolean;
   onSeek: (ms: number) => void;
   onZoom: (pxPerSec: number) => void;
+  onScroll?: (ms: number) => void;
+  onFit?: () => void;
+  onMarker?: () => void;
+  onSelectVis?: (id: string) => void;
+  onVisStyle?: (id: string) => void;
+  onVisQuelle?: (id: string) => void;
   onTrimEdge?: (edge: "in" | "out", nextEdgeMs: number, ripple: boolean) => void;
   onLoopIn?: (ms: number) => void;
   onLoopOut?: (ms: number) => void;
@@ -39,10 +45,24 @@ function msToX(ms: number, zoom: number): number {
 
 export function Timeline(props: Props) {
   const { project } = props;
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: globalThis.MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest(".clip-menu") || t?.closest("[data-testid='vis-clip']")) return;
+      setMenu(null);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [menu]);
   const durationMs = Math.max(props.durationMs, projectDurationMs(project), LANE_MIN_MS);
   const zoom = project.zoomPxPerSec;
   const width = Math.max(400, msToX(durationMs, zoom) + 48);
+  const scrollX = msToX(project.scrollMs, zoom);
   const playX = msToX(project.playheadMs, zoom);
+  const maxScroll = Math.max(0, (durationMs / 1000) * zoom - 400);
+  const shift = { transform: `translateX(${-scrollX}px)` };
 
   const seekFromEvent = (e: MouseEvent<HTMLElement>) => {
     if ((e.target as HTMLElement).closest("[data-edge], .loop-handle, .in-out")) return;
@@ -74,9 +94,22 @@ export function Timeline(props: Props) {
   return (
     <div className="timeline" data-testid="timeline">
       <div className="timeline-tools">
-        <button type="button" onClick={() => props.onZoom(Math.max(20, zoom / 1.25))}>−</button>
-        <button type="button" onClick={() => props.onZoom(Math.min(400, zoom * 1.25))}>+</button>
-        <span className="timeline-zoom">{Math.round(zoom)} px/s</span>
+        <button type="button" data-testid="timeline-zoom-out" onClick={() => props.onZoom(Math.max(20, zoom / 1.25))}>−</button>
+        <button type="button" data-testid="timeline-zoom-in" onClick={() => props.onZoom(Math.min(400, zoom * 1.25))}>+</button>
+        <span className="timeline-zoom" data-testid="timeline-zoom">{Math.round(zoom)} px/s</span>
+        <button type="button" data-testid="timeline-fit" title="Fit (F)" onClick={props.onFit}>Fit</button>
+        <button type="button" data-testid="timeline-marker" title="Marker (M)" onClick={props.onMarker}>Marker</button>
+        <label className="timeline-pan">
+          Pan
+          <input
+            type="range"
+            data-testid="timeline-pan"
+            min={0}
+            max={maxScroll}
+            value={Math.min(maxScroll, scrollX)}
+            onChange={(e) => props.onScroll?.((Number(e.target.value) / zoom) * 1000)}
+          />
+        </label>
         <span className="timeline-hint">
           {props.cutter ? "Cutter · drag edges · Shift+drag = ripple" : "1 visual track · 1 audio track"}
         </span>
@@ -95,10 +128,21 @@ export function Timeline(props: Props) {
             props.onRulerMark?.((x / zoom) * 1000);
           }}
         >
-          <div className="ruler-inner" style={{ width }}>
+          <div className="ruler-inner" style={{ width, ...shift }}>
             {ticks(durationMs, zoom, width).map((t) => (
               <span key={t} className="ruler-tick" style={{ left: msToX(t, zoom) }}>
                 {formatTimecode(t).slice(0, 5)}
+              </span>
+            ))}
+            {project.markers.map((m) => (
+              <span
+                key={m.id}
+                className="marker-flag"
+                data-testid="marker"
+                title={m.label}
+                style={{ left: msToX(m.timeMs, zoom) }}
+              >
+                {m.label}
               </span>
             ))}
             <LoopOverlay
@@ -117,7 +161,7 @@ export function Timeline(props: Props) {
         <div className="lane vis-lane" data-testid="lane-VIS">
           <div className="lane-label">VIS</div>
           <div className="lane-body" onClick={seekFromEvent}>
-            <div className="lane-inner" style={{ width }}>
+            <div className="lane-inner" style={{ width, ...shift }}>
               {project.vis.length ? (
                 project.vis.map((clip) => (
                   <VisBlock
@@ -125,6 +169,11 @@ export function Timeline(props: Props) {
                     clip={clip}
                     zoom={zoom}
                     cutter={props.cutter}
+                    selected={project.selectedVisId === clip.id}
+                    onSelect={() => props.onSelectVis?.(clip.id)}
+                    onStyle={() => props.onVisStyle?.(clip.id)}
+                    onQuelle={() => props.onVisQuelle?.(clip.id)}
+                    onContext={(x, y) => setMenu({ x, y, id: clip.id })}
                     onTrimIn={startTrim("in")}
                     onTrimOut={startTrim("out")}
                   />
@@ -140,7 +189,7 @@ export function Timeline(props: Props) {
         <div className="lane audio-lane" data-testid="lane-A1">
           <div className="lane-label">A1</div>
           <div className="lane-body" onClick={seekFromEvent}>
-            <div className="lane-inner" style={{ width }}>
+            <div className="lane-inner" style={{ width, ...shift }}>
               {project.audio.length ? (
                 project.audio.map((clip) => (
                   <AudioBlock
@@ -163,6 +212,36 @@ export function Timeline(props: Props) {
           </div>
         </div>
       </div>
+      {menu ? (
+        <div
+          className="clip-menu"
+          data-testid="vis-clip-menu"
+          style={{ position: "fixed", left: menu.x, top: menu.y }}
+        >
+          <button
+            type="button"
+            data-testid="vis-menu-style"
+            onClick={() => {
+              props.onSelectVis?.(menu.id);
+              props.onVisStyle?.(menu.id);
+              setMenu(null);
+            }}
+          >
+            Style
+          </button>
+          <button
+            type="button"
+            data-testid="vis-menu-quelle"
+            onClick={() => {
+              props.onSelectVis?.(menu.id);
+              props.onVisQuelle?.(menu.id);
+              setMenu(null);
+            }}
+          >
+            Quelle
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -274,23 +353,42 @@ function VisBlock({
   clip,
   zoom,
   cutter,
+  selected,
+  onSelect,
+  onContext,
   onTrimIn,
   onTrimOut,
 }: {
   clip: VisClip;
   zoom: number;
   cutter: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
+  onStyle?: () => void;
+  onQuelle?: () => void;
+  onContext?: (x: number, y: number) => void;
   onTrimIn: (e: MouseEvent<HTMLButtonElement>) => void;
   onTrimOut: (e: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <div
-      className="vis-span"
+      className={`vis-span${selected ? " selected" : ""}`}
       data-testid="vis-clip"
       data-scene={clip.sceneId}
+      data-selected={selected ? "true" : "false"}
       style={{
         left: msToX(clip.startMs, zoom),
         width: Math.max(8, msToX(clip.durationMs, zoom)),
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect?.();
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.();
+        onContext?.(e.clientX, e.clientY);
       }}
     >
       {cutter ? <Handle edge="in" onMouseDown={onTrimIn} /> : null}

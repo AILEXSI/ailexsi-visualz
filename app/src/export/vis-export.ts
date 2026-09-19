@@ -22,6 +22,8 @@ export type VisExportOptions = {
   sceneId: string;
   /** Scene at a timeline time — used after Cutter splits with different VIS functions. */
   sceneAt?: (timelineMs: number) => string;
+  /** Style params on the VIS clip at a timeline time (Kaleido presets, etc.). */
+  paramsAt?: (timelineMs: number) => Record<string, number | string | boolean> | undefined;
   /** PCM / feature time (source file) for a timeline time after trims. */
   featureTimeAt?: (timelineMs: number) => number;
   pcm: PcmBuffer | null;
@@ -115,6 +117,8 @@ export async function exportVisOnly(opts: VisExportOptions): Promise<VisExportRe
         engine.setScene(scene);
         lastScene = scene;
       }
+      const params = opts.paramsAt?.(timeMs);
+      if (params) engine.setParams(params);
       const featMs = opts.featureTimeAt?.(timeMs) ?? timeMs;
       engine.setFeatures(extractor ? extractor.sample(featMs) : silentFeatures(featMs));
       engine.step(dt);
