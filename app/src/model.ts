@@ -396,11 +396,12 @@ export function effectiveGain(mixer: MixerState): number {
 
 export function cycleScene(project: Project, sceneIds: readonly string[], delta: number): Project {
   if (!sceneIds.length) return project;
-  const current = sceneAt(project, project.playheadMs);
+  const hit = clipAtTime(project.vis, project.playheadMs);
+  const current = hit?.sceneId ?? project.sceneId;
   const i = sceneIds.indexOf(current);
   const base = i < 0 ? 0 : i;
   const next = sceneIds[((base + delta) % sceneIds.length + sceneIds.length) % sceneIds.length]!;
-  return setScene(project, next);
+  return setScene({ ...project, selectedVisId: hit?.id ?? null }, next);
 }
 
 export function setInPoint(project: Project, timeMs = project.playheadMs): Project {
