@@ -368,6 +368,22 @@ export {
 } from "./audio/wave-history-analyzer";
 export type { WaveHistoryAnalyzer } from "./audio/wave-history-analyzer";
 export {
+  PERCEPTION_BUILD_ID,
+  PERCEPTION_BANDS,
+  PERCEPTION_FMAX_HZ,
+  PERCEPTION_FMIN_HZ,
+  PERCEPTION_HOP_SAMPLES,
+  PERCEPTION_SAMPLE_RATE,
+  PERCEPTION_WINDOW_SAMPLES,
+  WARMUP_HOPS,
+  WARMUP_SEC,
+  analyzePcmToPerception,
+  createAdaptiveEnergyCore,
+  hopsFromPcm,
+  pushPcmHops,
+} from "./audio/adaptive-energy-core";
+export type { AdaptiveEnergyCore, AdaptiveEnergyCoreOptions } from "./audio/adaptive-energy-core";
+export {
   WAVE_HISTORY_MUSIC_DURATION_SEC,
   WAVE_HISTORY_MUSIC_NAME,
   WAVE_HISTORY_PROOF_TIMES_MS,
