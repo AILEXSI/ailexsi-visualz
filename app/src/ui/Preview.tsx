@@ -2,10 +2,14 @@ import { useEffect, useRef } from "react";
 import {
   createFeatureExtractor,
   createVisualEngine,
+  createWaveHistoryAnalyzer,
+  featuresWithWaveHistory,
   silentFeatures,
   type FeatureExtractor,
   type OfflineFeatureExtractor,
+  type PcmBuffer,
   type VisualEngine,
+  type WaveHistoryAnalyzer,
 } from "@ailexsi/visualz";
 import { clipAtTime, effectiveGain, featureTimeAt, sceneAt, type MixerState, type Project } from "../model";
 
@@ -20,6 +24,7 @@ interface Props {
   playing: boolean;
   audioEl: HTMLAudioElement | null;
   extractor: OfflineFeatureExtractor | null;
+  pcm: PcmBuffer | null;
   mixer: MixerState;
   onLevels?: (a1: number, master: number) => void;
 }
@@ -28,6 +33,7 @@ export function Preview(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<VisualEngine | null>(null);
   const liveRef = useRef<FeatureExtractor | null>(null);
+  const waveRef = useRef<WaveHistoryAnalyzer | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const meterRef = useRef<AnalyserNode | null>(null);
@@ -107,6 +113,10 @@ export function Preview(props: Props) {
   }, [props.mixer]);
 
   useEffect(() => {
+    waveRef.current = props.pcm ? createWaveHistoryAnalyzer(props.pcm) : null;
+  }, [props.pcm]);
+
+  useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
     const audio = props.audioEl;
@@ -119,7 +129,9 @@ export function Preview(props: Props) {
       let raf = 0;
       const tick = () => {
         const live = liveRef.current;
-        if (live) engine.setFeatures(live.sample(audio.currentTime * 1000));
+        const t = audio.currentTime * 1000;
+        const raw = live ? live.sample(t) : silentFeatures(t);
+        engine.setFeatures(featuresWithWaveHistory(raw, waveRef.current, t));
         const meter = meterRef.current;
         if (meter && props.onLevels) {
           meter.getByteTimeDomainData(buf);
@@ -140,7 +152,8 @@ export function Preview(props: Props) {
 
     engine.stop();
     const t = featureTimeAt(props.project, props.project.playheadMs);
-    engine.setFeatures(props.extractor ? props.extractor.sample(t) : silentFeatures(t));
+    const raw = props.extractor ? props.extractor.sample(t) : silentFeatures(t);
+    engine.setFeatures(featuresWithWaveHistory(raw, waveRef.current, t));
     engine.step(1 / 30);
     props.onLevels?.(0, 0);
   }, [props.playing, props.project, sceneNow, styleKey, props.extractor, props.audioEl, props.mixer, props.onLevels, clip?.params]);

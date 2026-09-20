@@ -41,7 +41,15 @@ describe("VIS style registry", () => {
     expect(getCatalogEntry("kaleido-crystal")?.renderer).toBe("kaleido-crystal");
     expect(getCatalogEntry("kaleido-petal")?.renderer).toBe("kaleido-petal");
     expect(getCatalogEntry("kaleido-tunnel")?.renderer).toBe("kaleido-tunnel");
-    expect(SCENE_CATALOG.filter((e) => e.family === "LEXI")).toEqual([]);
+    expect(catalogEntriesFor("LEXI").map((e) => e.id)).toEqual([
+      "lexi-wave-history-evidence",
+    ]);
+    expect(getCatalogEntry("lexi-wave-history-evidence")?.displayName).toBe(
+      "Wave-History · Evidence (Debug)",
+    );
+    expect(getCatalogEntry("lexi-wave-history-evidence")?.renderer).toBe(
+      "lexi-wave-history-evidence",
+    );
     expect(getCatalogEntry("lexi-terrain-gold")?.family).toBe("LEXI Terrain Gold");
     expect(getCatalogEntry("lexi-terrain-gold")?.renderer).toBe("lexi-terrain-gold");
     expect(getCatalogEntry("lexi-terrain-gold")?.displayName).toBe("Terrain Gold · MotionGate");

@@ -1,0 +1,75 @@
+{
+  "buildId": "wave-core-fft-v2-tested",
+  "fixture": "wave-history-music-fixture.wav",
+  "points": [
+    {
+      "timeMs": 2500,
+      "audioTimeSec": 2.5,
+      "pcmWindow": {
+        "start": 108032,
+        "end": 110080,
+        "hop": 2048
+      },
+      "sampleRange": {
+        "start": 0,
+        "end": 110250,
+        "sampleRate": 44100
+      },
+      "dominantBand": 0,
+      "dominantEnergy": 0.9753377437591553,
+      "bandsHash": "bc15cd5c",
+      "historyHash": "0990f1c5",
+      "hopCount": 212,
+      "buildId": "wave-core-fft-v2-tested",
+      "previewHistoryHash": "0990f1c5",
+      "exportHistoryHash": "0990f1c5",
+      "passage": "bass-heavy"
+    },
+    {
+      "timeMs": 4100,
+      "audioTimeSec": 4.1,
+      "pcmWindow": {
+        "start": 178688,
+        "end": 180736,
+        "hop": 2048
+      },
+      "sampleRange": {
+        "start": 0,
+        "end": 180809,
+        "sampleRate": 44100
+      },
+      "dominantBand": 0,
+      "dominantEnergy": 0.9817410707473755,
+      "bandsHash": "541e3a2d",
+      "historyHash": "c5e7592e",
+      "hopCount": 350,
+      "buildId": "wave-core-fft-v2-tested",
+      "previewHistoryHash": "c5e7592e",
+      "exportHistoryHash": "c5e7592e",
+      "passage": "kick transient"
+    },
+    {
+      "timeMs": 7800,
+      "audioTimeSec": 7.8,
+      "pcmWindow": {
+        "start": 341504,
+        "end": 343552,
+        "hop": 2048
+      },
+      "sampleRange": {
+        "start": 0,
+        "end": 343980,
+        "sampleRate": 44100
+      },
+      "dominantBand": 31,
+      "dominantEnergy": 0.6059172749519348,
+      "bandsHash": "1eb15222",
+      "historyHash": "bfabc0ef",
+      "hopCount": 668,
+      "buildId": "wave-core-fft-v2-tested",
+      "previewHistoryHash": "bfabc0ef",
+      "exportHistoryHash": "bfabc0ef",
+      "passage": "build / dense chirp"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { builtinScenes } from "./scenes";
 import { applyBloom } from "./post/bloom";
 import { createGlPost } from "./gl/post-pipeline";
 import { createFeedbackState, stepFeedback } from "./gl/feedback";
+import { LEXI_WAVE_HISTORY_EVIDENCE_ID } from "./scenes/lexi-wave-history-evidence";
 
 export interface VisualEngine {
   start(): void;
@@ -103,6 +104,24 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 
   function paint(dt: number) {
     const clamped = Math.min(Math.max(dt, 0), 0.05);
+    const geometryOnly = currentSceneId === LEXI_WAVE_HISTORY_EVIDENCE_ID;
+    if (geometryOnly) {
+      const scene = sceneRegistry.get(currentSceneId);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
+      if (scene) {
+        scene.render(
+          { width: drawTarget.width, height: drawTarget.height, ctx },
+          lastFeatures,
+          params,
+          clamped,
+        );
+      }
+      if (post) post.passthrough(sceneCanvas);
+      return;
+    }
     clock += clamped;
     if (lastFeatures.beatPulse > 0) beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
     const energy = lastFeatures.rms + lastFeatures.bass;
@@ -308,6 +327,54 @@ export {
   LEXI_ENERGY_SPECTRUM_ID,
   lexiEnergySpectrumScene,
 } from "./scenes/lexi-energy-spectrum";
+export {
+  LEXI_WAVE_HISTORY_EVIDENCE_DEFAULTS,
+  LEXI_WAVE_HISTORY_EVIDENCE_FAMILY,
+  LEXI_WAVE_HISTORY_EVIDENCE_ID,
+  LEXI_WAVE_HISTORY_EVIDENCE_MODE,
+  lexiWaveHistoryEvidenceScene,
+} from "./scenes/lexi-wave-history-evidence";
+export {
+  ATTACK_SEC,
+  BANDS,
+  CORE_BUILD_ID,
+  FFT_SIZE,
+  HEIGHT_SCALE,
+  HISTORY,
+  HOP,
+  RELEASE_SEC,
+  SR,
+  analyzePcmToRing,
+  bandIndexForHz,
+  createRing,
+  fftMags,
+  magsToBands,
+  normalizeBands,
+  pushRing,
+  ringRow,
+  smoothBands,
+} from "./audio/wave-core";
+export type { WaveRing } from "./audio/wave-core";
+export {
+  analyzePcmToTime,
+  createWaveHistoryAnalyzer,
+  featuresWithWaveHistory,
+  hashFloat32,
+  hashRing,
+  hopsForPrefix,
+  mixMonoPcm,
+  pcmBufferFromMono,
+  resampleToCoreRate,
+} from "./audio/wave-history-analyzer";
+export type { WaveHistoryAnalyzer } from "./audio/wave-history-analyzer";
+export {
+  WAVE_HISTORY_MUSIC_DURATION_SEC,
+  WAVE_HISTORY_MUSIC_NAME,
+  WAVE_HISTORY_PROOF_TIMES_MS,
+  createWaveHistoryMusicBuffer,
+  createWaveHistoryMusicPcm,
+  encodeWavPcm16,
+} from "./audio/wave-history-music-fixture";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";

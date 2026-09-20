@@ -1,5 +1,25 @@
 /** AILEXSI Visualz — Audio Feature Types */
 
+import type { WaveRing } from "../audio/wave-core";
+
+/** Shared Wave-History FFT snapshot. Preview and Export must produce the same one at time T. */
+export interface WaveHistorySnapshot {
+  buildId: string;
+  timeMs: number;
+  nativeSampleRate: number;
+  nativeSampleEnd: number;
+  coreSampleEnd: number;
+  hopCount: number;
+  windowStart: number;
+  windowEnd: number;
+  dominantBand: number;
+  dominantEnergy: number;
+  newestBands: Float32Array;
+  bandsHash: string;
+  historyHash: string;
+  ring: WaveRing;
+}
+
 export interface AudioFeatures {
   timeMs: number;
   rms: number;
@@ -17,6 +37,11 @@ export interface AudioFeatures {
   vocal?: number;
   buildup?: number;
   drop?: number;
+  /**
+   * Shared Wave-History FFT snapshot (Preview + Export).
+   * Evidence scene consumes this only — not spectrum / live AnalyserNode.
+   */
+  waveHistory?: WaveHistorySnapshot;
 }
 
 export interface AudioAnalyserConfig {
