@@ -364,7 +364,8 @@ describe("11 Non-finite containment", () => {
     const good = new Float32Array(BANDS);
     good[10] = 0.2;
     const ok = core.pushHop(good, FFT_SIZE);
-    expect(ok.bands[10]!.absoluteEnergy).toBe(0.2);
+    // Float32 cannot store 0.2 exactly; public energy must match the stored bin.
+    expect(ok.bands[10]!.absoluteEnergy).toBe(good[10]);
 
     const nan = new Float32Array(BANDS);
     nan[3] = Number.NaN;
@@ -385,7 +386,7 @@ describe("11 Non-finite containment", () => {
 
     const after = core.pushHop(good, FFT_SIZE + HOP);
     expect(perceptionFieldsFinite(after)).toBe(true);
-    expect(after.bands[10]!.absoluteEnergy).toBe(0.2);
+    expect(after.bands[10]!.absoluteEnergy).toBe(good[10]);
     expect(core.acceptedHops()).toBe(2);
   });
 });
@@ -540,6 +541,7 @@ describe("extra: analyzer attach + raw-band provenance", () => {
     const core = resampleToCoreRate(mixMonoPcm(pcmBufferFromMono(native, 48000)), 48000);
     expect(core.length).toBe(Math.floor(native.length / 48000 * 44100));
     const src = readFileSync(join(here, "adaptive-energy-core.ts"), "utf8");
-    expect(src).not.toMatch(/resampleToCoreRate/);
+    expect(src).not.toMatch(/from \"\.\/wave-history-analyzer\"/);
+    expect(src).not.toMatch(/resampleToCoreRate\(/);
   });
 });
