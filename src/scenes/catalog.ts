@@ -16,6 +16,7 @@ import { LEXI_TERRAIN_GOLD_P12_DEFAULTS } from "./lexi-terrain-gold-p12";
 import { LEXI_ENERGY_HORIZON_DEFAULTS } from "./lexi-energy-horizon";
 import { LEXI_ENERGY_FIELD_DEFAULTS } from "./lexi-energy-field";
 import { LEXI_ENERGY_SPECTRUM_DEFAULTS } from "./lexi-energy-spectrum";
+import { LEXI_WAVE_HISTORY_EVIDENCE_DEFAULTS } from "./lexi-wave-history-evidence";
 
 export const VIS_FAMILIES = [
   "LEXI",
@@ -44,6 +45,15 @@ export interface SceneCatalogEntry {
 }
 
 export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
+  {
+    id: "lexi-wave-history-evidence",
+    displayName: "Wave-History · Evidence (Debug)",
+    shortName: "Wave Evidence",
+    family: "LEXI",
+    description: "Evidence / Debug — geometry-only Wave-History FFT. Gold lines, no bloom.",
+    renderer: "lexi-wave-history-evidence",
+    params: LEXI_WAVE_HISTORY_EVIDENCE_DEFAULTS,
+  },
   // LEXI Terrain Gold stages: new stages = new ids. Never overwrite/delete an older stage.
   {
     id: "lexi-terrain-gold",

@@ -727,6 +727,7 @@ export function App() {
           playing={playing}
           audioEl={audioEl}
           extractor={extractor}
+          pcm={pcm}
           mixer={project.mixer}
           onLevels={onLevels}
         />

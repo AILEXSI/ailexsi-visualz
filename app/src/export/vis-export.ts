@@ -9,6 +9,8 @@ import {
   assertPrimaryExportHasAudio,
   createOfflineFeatureExtractor,
   createVisualEngine,
+  createWaveHistoryAnalyzer,
+  featuresWithWaveHistory,
   encodeAacFromPcm,
   muxAvcToMp4,
   pcmToWav,
@@ -112,6 +114,7 @@ async function encodeVisAvc(opts: VisExportOptions): Promise<EncodedVis> {
   const extractor: OfflineFeatureExtractor | null = opts.pcm
     ? createOfflineFeatureExtractor(opts.pcm)
     : null;
+  const wave = opts.pcm ? createWaveHistoryAnalyzer(opts.pcm) : null;
 
   const samples: AvcSample[] = [];
   let description: Uint8Array | null = null;
@@ -160,7 +163,8 @@ async function encodeVisAvc(opts: VisExportOptions): Promise<EncodedVis> {
       const params = opts.paramsAt?.(timeMs);
       if (params) engine.setParams(params);
       const featMs = opts.featureTimeAt?.(timeMs) ?? timeMs;
-      engine.setFeatures(extractor ? extractor.sample(featMs) : silentFeatures(featMs));
+      const raw = extractor ? extractor.sample(featMs) : silentFeatures(featMs);
+      engine.setFeatures(featuresWithWaveHistory(raw, wave, featMs));
       engine.step(dt);
       const frame = new VideoFrame(canvas, {
         timestamp: i * frameDurUs,
