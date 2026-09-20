@@ -137,12 +137,22 @@ export type PostControls = {
 export type GlPost = {
   resize(nw: number, nh: number): void;
   composite(srcCanvas: HTMLCanvasElement, controls: PostControls, timeSec: number): void;
+  /** Copy scene pixels with no bloom / filaments / fog / chroma / grain. */
+  passthrough(srcCanvas: HTMLCanvasElement): void;
   destroy(): void;
   capabilities(): { hdr: boolean; label: HdrFormat["label"]; filaments: boolean };
 };
 
-export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
-  const glOrNull = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
+export function createGlPost(
+  canvas: HTMLCanvasElement,
+  opts?: { preserveDrawingBuffer?: boolean },
+): GlPost | null {
+  const glOrNull = canvas.getContext("webgl2", {
+    alpha: false,
+    antialias: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: opts?.preserveDrawingBuffer === true,
+  });
   if (!glOrNull) return null;
   const gl: WebGL2RenderingContext = glOrNull;
   let chosen = chooseHdrFormat(gl);
@@ -204,6 +214,24 @@ export function createGlPost(canvas: HTMLCanvasElement): GlPost | null {
   return {
     capabilities() { return { hdr: chosen.hdr, label: chosen.label, filaments: !!filaments }; },
     resize(nw, nh) { canvas.width = nw; canvas.height = nh; w = Math.max(2, nw); h = Math.max(2, nh); allocLevels(); },
+    passthrough(srcCanvas) {
+      if (srcCanvas.width !== w || srcCanvas.height !== h) {
+        w = Math.max(2, srcCanvas.width); h = Math.max(2, srcCanvas.height);
+        canvas.width = w; canvas.height = h; allocLevels();
+      }
+      gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcCanvas);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.disable(gl.BLEND);
+      gl.useProgram(copyP);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, srcTex);
+      gl.uniform1i(locCopy.src, 0);
+      gl.uniform1f(locCopy.weight, 1);
+      drawQuad();
+    },
     composite(srcCanvas, controls, timeSec) {
       if (srcCanvas.width !== w || srcCanvas.height !== h) {
         w = Math.max(2, srcCanvas.width); h = Math.max(2, srcCanvas.height);

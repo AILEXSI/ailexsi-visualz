@@ -2,6 +2,26 @@
 
 import type { AudioFeatures, AudioAnalyserConfig } from "../types";
 
+export function silentFeatures(timeMs = 0): AudioFeatures {
+  return {
+    timeMs,
+    rms: 0,
+    bass: 0,
+    mid: 0,
+    treble: 0,
+    spectrum: new Float32Array(64),
+    onset: false,
+    beatPulse: 0,
+    tempoBpm: null,
+    kick: 0,
+    snare: 0,
+    hat: 0,
+    vocal: 0,
+    buildup: 0,
+    drop: 0,
+  };
+}
+
 export interface FeatureExtractor {
   sample(timeMs?: number): AudioFeatures;
   disconnect(): void;

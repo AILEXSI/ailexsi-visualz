@@ -15,10 +15,13 @@ import { builtinScenes } from "./scenes";
 import { applyBloom } from "./post/bloom";
 import { createGlPost } from "./gl/post-pipeline";
 import { createFeedbackState, stepFeedback } from "./gl/feedback";
+import { LEXI_WAVE_HISTORY_EVIDENCE_ID } from "./scenes/lexi-wave-history-evidence";
 
 export interface VisualEngine {
   start(): void;
   stop(): void;
+  /** Paint one frame using the last `setFeatures` packet. Used by export / paused seek. */
+  step(dt?: number): void;
   setFeatures(features: AudioFeatures): void;
   setScene(sceneId: string): void;
   setParams(params: Partial<SceneParams>): void;
@@ -57,7 +60,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
   sceneCanvas.width = Math.max(2, display.width || 1280);
   sceneCanvas.height = Math.max(2, display.height || 720);
 
-  const post = createGlPost(display);
+  const post = createGlPost(display, { preserveDrawingBuffer: options.preserveDrawingBuffer === true });
   const ctxOrNull = (post ? sceneCanvas : display).getContext("2d");
   if (!ctxOrNull) throw new Error("Could not get 2D context");
   const ctx: CanvasRenderingContext2D = ctxOrNull;
@@ -99,14 +102,30 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 
   initialScene?.onEnter?.({ width: drawTarget.width, height: drawTarget.height, ctx }, params);
 
-  function frame(now: number) {
-    if (!isPlaying) return;
-    const dt = Math.min((now - lastTime) / 1000, 0.05);
-    lastTime = now;
-    clock += dt;
+  function paint(dt: number) {
+    const clamped = Math.min(Math.max(dt, 0), 0.05);
+    const geometryOnly = currentSceneId === LEXI_WAVE_HISTORY_EVIDENCE_ID;
+    if (geometryOnly) {
+      const scene = sceneRegistry.get(currentSceneId);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
+      if (scene) {
+        scene.render(
+          { width: drawTarget.width, height: drawTarget.height, ctx },
+          lastFeatures,
+          params,
+          clamped,
+        );
+      }
+      if (post) post.passthrough(sceneCanvas);
+      return;
+    }
+    clock += clamped;
     if (lastFeatures.beatPulse > 0) beatPulseDecay = Math.max(lastFeatures.beatPulse, beatPulseDecay);
     const energy = lastFeatures.rms + lastFeatures.bass;
-    beatPulseDecay = Math.max(0, beatPulseDecay - dt * (energy < 0.04 ? 8 : 3.2));
+    beatPulseDecay = Math.max(0, beatPulseDecay - clamped * (energy < 0.04 ? 8 : 3.2));
     const features: AudioFeatures = {
       ...lastFeatures,
       beatPulse: Math.max(lastFeatures.beatPulse, beatPulseDecay),
@@ -116,7 +135,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     ctx.fillStyle = `rgba(${rgb},0.22)`;
     ctx.fillRect(0, 0, drawTarget.width, drawTarget.height);
     if (scene) {
-      scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, dt);
+      scene.render({ width: drawTarget.width, height: drawTarget.height, ctx }, features, params, clamped);
     }
     const bloomBase = typeof params.bloom === "number" ? params.bloom : 0.8;
     const bloomAmt = bloomBase * (0.5 + features.rms * 0.35 + features.beatPulse * 0.4);
@@ -131,7 +150,7 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
           kick,
           drop: features.drop ?? 0,
           energy: features.rms * 0.5 + features.bass * 0.5,
-          dt,
+          dt: clamped,
         }),
         gpuFilaments: params.gpuFilaments !== false,
         songTimeMs: features.timeMs,
@@ -144,6 +163,13 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     } else {
       applyBloom(ctx, display, bloomAmt);
     }
+  }
+
+  function frame(now: number) {
+    if (!isPlaying) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    paint(dt);
     rafId = requestAnimationFrame(frame);
   }
 
@@ -157,6 +183,10 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
     stop() {
       isPlaying = false;
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    },
+    step(dt = 1 / 30) {
+      lastTime = performance.now();
+      paint(dt);
     },
     setFeatures(features: AudioFeatures) {
       lastFeatures = features;
@@ -208,6 +238,159 @@ export function createVisualEngine(options: VisualEngineOptions): VisualEngine {
 
 export * from "./types";
 export { builtinScenes } from "./scenes";
+export {
+  SCENE_CATALOG,
+  VIS_FAMILIES,
+  catalogEntriesFor,
+  catalogRendererIds,
+  getCatalogEntry,
+} from "./scenes/catalog";
+export type { SceneCatalogEntry, VisFamilyId } from "./scenes/catalog";
+export {
+  KALEIDO_LOOP_FAMILY,
+  KALEIDO_LOOP_ID,
+  KALEIDO_LOOP_MODE,
+  KALEIDO_LOOP_PRESETS,
+  kaleidoLoopPhase,
+  kaleidoLoopState,
+  kaleidoPeriodSec,
+} from "./scenes/kaleido-loop";
+export {
+  KALEIDO_CRYSTAL_DEFAULTS,
+  KALEIDO_CRYSTAL_FAMILY,
+  KALEIDO_CRYSTAL_ID,
+  kaleidoCrystalScene,
+} from "./scenes/kaleido-crystal";
+export {
+  KALEIDO_PETAL_DEFAULTS,
+  KALEIDO_PETAL_FAMILY,
+  KALEIDO_PETAL_ID,
+  kaleidoPetalScene,
+} from "./scenes/kaleido-petal";
+export {
+  KALEIDO_TUNNEL_DEFAULTS,
+  KALEIDO_TUNNEL_FAMILY,
+  KALEIDO_TUNNEL_ID,
+  kaleidoTunnelScene,
+} from "./scenes/kaleido-tunnel";
+export {
+  LEXI_TERRAIN_GOLD_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FAMILY,
+  LEXI_TERRAIN_GOLD_ID,
+  LEXI_TERRAIN_GOLD_MODE,
+  terrainPhase,
+} from "./scenes/lexi-terrain-gold";
+export {
+  LEXI_TERRAIN_GOLD_FIELD_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FIELD_FAMILY,
+  LEXI_TERRAIN_GOLD_FIELD_ID,
+  LEXI_TERRAIN_GOLD_FIELD_KICK_TAU,
+  LEXI_TERRAIN_GOLD_FIELD_MODE,
+  lexiTerrainGoldFieldScene,
+} from "./scenes/lexi-terrain-gold-field";
+export {
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_FAMILY,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_ID,
+  LEXI_TERRAIN_GOLD_FIELD_PLUS_MODE,
+  lexiTerrainGoldFieldPlusScene,
+} from "./scenes/lexi-terrain-gold-field-plus";
+export {
+  LEXI_TERRAIN_GOLD_HERO_DEFAULTS,
+  LEXI_TERRAIN_GOLD_HERO_FAMILY,
+  LEXI_TERRAIN_GOLD_HERO_ID,
+  LEXI_TERRAIN_GOLD_HERO_MODE,
+  lexiTerrainGoldHeroScene,
+} from "./scenes/lexi-terrain-gold-hero";
+export {
+  LEXI_TERRAIN_GOLD_P12_DEFAULTS,
+  LEXI_TERRAIN_GOLD_P12_FAMILY,
+  LEXI_TERRAIN_GOLD_P12_ID,
+  LEXI_TERRAIN_GOLD_P12_MODE,
+  lexiTerrainGoldP12Scene,
+} from "./scenes/lexi-terrain-gold-p12";
+export {
+  LEXI_ENERGY_HORIZON_DEFAULTS,
+  LEXI_ENERGY_HORIZON_FAMILY,
+  LEXI_ENERGY_HORIZON_ID,
+  lexiEnergyHorizonScene,
+} from "./scenes/lexi-energy-horizon";
+export {
+  LEXI_ENERGY_FIELD_DEFAULTS,
+  LEXI_ENERGY_FIELD_FAMILY,
+  LEXI_ENERGY_FIELD_ID,
+  lexiEnergyFieldScene,
+} from "./scenes/lexi-energy-field";
+export {
+  LEXI_ENERGY_SPECTRUM_DEFAULTS,
+  LEXI_ENERGY_SPECTRUM_FAMILY,
+  LEXI_ENERGY_SPECTRUM_ID,
+  lexiEnergySpectrumScene,
+} from "./scenes/lexi-energy-spectrum";
+export {
+  LEXI_WAVE_HISTORY_EVIDENCE_DEFAULTS,
+  LEXI_WAVE_HISTORY_EVIDENCE_FAMILY,
+  LEXI_WAVE_HISTORY_EVIDENCE_ID,
+  LEXI_WAVE_HISTORY_EVIDENCE_MODE,
+  lexiWaveHistoryEvidenceScene,
+} from "./scenes/lexi-wave-history-evidence";
+export {
+  ATTACK_SEC,
+  BANDS,
+  CORE_BUILD_ID,
+  FFT_SIZE,
+  HEIGHT_SCALE,
+  HISTORY,
+  HOP,
+  RELEASE_SEC,
+  SR,
+  analyzePcmToRing,
+  bandIndexForHz,
+  createRing,
+  fftMags,
+  magsToBands,
+  normalizeBands,
+  pushRing,
+  ringRow,
+  smoothBands,
+} from "./audio/wave-core";
+export type { WaveRing } from "./audio/wave-core";
+export {
+  analyzePcmToTime,
+  createWaveHistoryAnalyzer,
+  featuresWithWaveHistory,
+  hashFloat32,
+  hashRing,
+  hopsForPrefix,
+  mixMonoPcm,
+  pcmBufferFromMono,
+  resampleToCoreRate,
+} from "./audio/wave-history-analyzer";
+export type { WaveHistoryAnalyzer } from "./audio/wave-history-analyzer";
+export {
+  PERCEPTION_BUILD_ID,
+  PERCEPTION_BANDS,
+  PERCEPTION_FMAX_HZ,
+  PERCEPTION_FMIN_HZ,
+  PERCEPTION_HOP_SAMPLES,
+  PERCEPTION_SAMPLE_RATE,
+  PERCEPTION_WINDOW_SAMPLES,
+  WARMUP_HOPS,
+  WARMUP_SEC,
+  analyzePcmToPerception,
+  createAdaptiveEnergyCore,
+  hopsFromPcm,
+  pushPcmHops,
+} from "./audio/adaptive-energy-core";
+export type { AdaptiveEnergyCore, AdaptiveEnergyCoreOptions } from "./audio/adaptive-energy-core";
+export {
+  WAVE_HISTORY_MUSIC_DURATION_SEC,
+  WAVE_HISTORY_MUSIC_NAME,
+  WAVE_HISTORY_PROOF_TIMES_MS,
+  createWaveHistoryMusicBuffer,
+  createWaveHistoryMusicPcm,
+  encodeWavPcm16,
+} from "./audio/wave-history-music-fixture";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";
@@ -215,3 +398,34 @@ export { stepFeedback, createFeedbackState } from "./gl/feedback";
 export { chooseHdrFormat } from "./gl/hdr";
 export { filamentParams, filamentParamsBatch } from "./gl/filament-state";
 export { createFilamentPass } from "./gl/filaments";
+export {
+  createFeatureExtractor,
+  silentFeatures,
+} from "./audio/feature-extractor";
+export type { FeatureExtractor } from "./audio/feature-extractor";
+export { createOfflineFeatureExtractor, waveformPeaks } from "./audio/offline-extractor";
+export type { OfflineFeatureExtractor, PcmBuffer } from "./audio/offline-extractor";
+export {
+  selectAvcEncoderConfig,
+  avcEncoderCandidates,
+  DEFAULT_AVC_BITRATE,
+  unsupportedAvcEncoderMessage,
+} from "./export/avc";
+export type { AvcEncoderSelection } from "./export/avc";
+export { muxAvcToMp4, mp4HasSoundTrack } from "./export/mp4";
+export type { AvcSample, AacSample, AacTrack, PcmTrack } from "./export/mp4";
+export { encodeAacFromPcm, aacAudioSpecificConfigIsUsable, AAC_BITRATE } from "./export/aac";
+export { slicePcmWindow, pcmToSowt, slicedPcmIsAudible } from "./export/pcm-slice";
+export { pcmToWav, wavDurationSec } from "./export/wav";
+export {
+  assertPrimaryExportHasAudio,
+  EXAMPLE_FFPROBE_MUXED_STREAMS,
+  FFMPEG_MISSING_ERROR,
+  NO_AUDIO_STREAM_ERROR,
+  ffmpegMuxArgv,
+  ffprobeAudioCodec,
+  ffprobeDurationSec,
+  ffprobeHasAudioStream,
+  parseFfprobeJson,
+  quoteFfmpegMuxCommand,
+} from "./export/ffmpeg-mux";

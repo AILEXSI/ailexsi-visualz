@@ -61,4 +61,6 @@ export interface VisualEngineOptions {
   sourceNode?: AudioNode;
   initialSceneId?: string;
   initialParams?: Partial<SceneParams>;
+  /** Keep the WebGL drawing buffer so capture / VideoFrame encode can read it. */
+  preserveDrawingBuffer?: boolean;
 }
