@@ -4,9 +4,13 @@
  * Advances by hop index derived from audio/PCM time, never wall-clock dt.
  * Seek rebuilds from audio before T (same hops as continuous play to T).
  * Scene code must only consume the snapshot; it must not FFT.
+ *
+ * The same hop loop also steps Adaptive Energy Core V0.1 on raw (pre-normalize)
+ * bands. Geometry still uses the normalized/smoothed ring only.
  */
-import type { AudioFeatures, WaveHistorySnapshot } from "../types/audio";
+import type { AudioFeatures, MusicPerceptionFrameV01, WaveHistorySnapshot } from "../types/audio";
 import type { PcmBuffer } from "./offline-extractor";
+import { createAdaptiveEnergyCore, type AdaptiveEnergyCore } from "./adaptive-energy-core";
 import {
   BANDS,
   CORE_BUILD_ID,
@@ -29,6 +33,8 @@ export type { WaveHistorySnapshot };
 export interface WaveHistoryAnalyzer {
   sampleAt(timeMs: number): WaveHistorySnapshot;
   lastSnapshot(): WaveHistorySnapshot | null;
+  /** Latest Adaptive Energy hop. Null until the first complete FFT window. */
+  lastPerception(): MusicPerceptionFrameV01 | null;
   corePcm(): Float32Array;
   reset(): void;
 }
@@ -165,6 +171,7 @@ export function createWaveHistoryAnalyzer(pcm: PcmBuffer): WaveHistoryAnalyzer {
   const core = resampleToCoreRate(nativeMono, pcm.sampleRate);
   let ring = createRing();
   let smooth = new Float32Array(BANDS);
+  let perception: AdaptiveEnergyCore = createAdaptiveEnergyCore();
   let nextStart = 0;
   let hopCount = 0;
   let last: WaveHistorySnapshot | null = null;
@@ -172,6 +179,7 @@ export function createWaveHistoryAnalyzer(pcm: PcmBuffer): WaveHistoryAnalyzer {
   function reset(): void {
     ring = createRing();
     smooth = new Float32Array(BANDS);
+    perception.reset();
     nextStart = 0;
     hopCount = 0;
     last = null;
@@ -186,6 +194,8 @@ export function createWaveHistoryAnalyzer(pcm: PcmBuffer): WaveHistoryAnalyzer {
       const frame = core.subarray(nextStart, nextStart + FFT_SIZE);
       const mags = fftMags(frame);
       const raw = magsToBands(mags);
+      // Perception consumes raw (pre-normalize) bands so absolute scale survives.
+      perception.pushHop(raw, nextStart + FFT_SIZE);
       const norm = normalizeBands(raw);
       smoothBands(smooth, norm, dt);
       pushRing(ring, smooth);
@@ -198,6 +208,7 @@ export function createWaveHistoryAnalyzer(pcm: PcmBuffer): WaveHistoryAnalyzer {
     reset,
     corePcm: () => core,
     lastSnapshot: () => last,
+    lastPerception: () => perception.lastFrame(),
     sampleAt(timeMs: number) {
       const coreEnd = coreSampleEndForTime(timeMs, core.length);
       processUntil(coreEnd);
@@ -232,7 +243,9 @@ export function featuresWithWaveHistory(
   timeMs: number,
 ): AudioFeatures {
   if (!analyzer) return features;
-  return { ...features, waveHistory: analyzer.sampleAt(timeMs) };
+  const waveHistory = analyzer.sampleAt(timeMs);
+  const musicPerception = analyzer.lastPerception() ?? undefined;
+  return { ...features, waveHistory, musicPerception };
 }
 
 export function pcmBufferFromMono(data: Float32Array, sampleRate = SR): PcmBuffer {
