@@ -237,6 +237,24 @@ export {
   kaleidoPeriodSec,
 } from "./scenes/kaleido-loop";
 export {
+  KALEIDO_CRYSTAL_DEFAULTS,
+  KALEIDO_CRYSTAL_FAMILY,
+  KALEIDO_CRYSTAL_ID,
+  kaleidoCrystalScene,
+} from "./scenes/kaleido-crystal";
+export {
+  KALEIDO_PETAL_DEFAULTS,
+  KALEIDO_PETAL_FAMILY,
+  KALEIDO_PETAL_ID,
+  kaleidoPetalScene,
+} from "./scenes/kaleido-petal";
+export {
+  KALEIDO_TUNNEL_DEFAULTS,
+  KALEIDO_TUNNEL_FAMILY,
+  KALEIDO_TUNNEL_ID,
+  kaleidoTunnelScene,
+} from "./scenes/kaleido-tunnel";
+export {
   LEXI_TERRAIN_GOLD_DEFAULTS,
   LEXI_TERRAIN_GOLD_FAMILY,
   LEXI_TERRAIN_GOLD_ID,

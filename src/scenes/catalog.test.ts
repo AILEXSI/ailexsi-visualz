@@ -24,15 +24,22 @@ describe("VIS style registry", () => {
   it("wires Kaleido Loop as its own family (not LEXI)", () => {
     const family = catalogEntriesFor("Kaleido Loop");
     expect(family.every((e) => e.family === KALEIDO_LOOP_FAMILY)).toBe(true);
-    expect(family.every((e) => e.renderer === KALEIDO_LOOP_ID)).toBe(true);
     expect(family.every((e) => e.mode === KALEIDO_LOOP_MODE)).toBe(true);
+    const classic = family.filter((e) => e.id.startsWith("kaleido-loop"));
+    expect(classic.every((e) => e.renderer === KALEIDO_LOOP_ID)).toBe(true);
     expect(family.map((e) => e.displayName)).toEqual([
       "Kaleido Loop",
       "Gold Gate",
       "Pink Core",
       "Cyan Pulse",
+      "Kaleido · Crystal",
+      "Kaleido · Petal",
+      "Kaleido · Tunnel",
     ]);
     expect(getCatalogEntry("kaleido-loop-gold-gate")?.params).toEqual(KALEIDO_LOOP_PRESETS["gold-gate"]);
+    expect(getCatalogEntry("kaleido-crystal")?.renderer).toBe("kaleido-crystal");
+    expect(getCatalogEntry("kaleido-petal")?.renderer).toBe("kaleido-petal");
+    expect(getCatalogEntry("kaleido-tunnel")?.renderer).toBe("kaleido-tunnel");
     expect(SCENE_CATALOG.filter((e) => e.family === "LEXI")).toEqual([]);
     expect(getCatalogEntry("lexi-terrain-gold")?.family).toBe("LEXI Terrain Gold");
     expect(getCatalogEntry("lexi-terrain-gold")?.renderer).toBe("lexi-terrain-gold");

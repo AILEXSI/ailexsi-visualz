@@ -153,7 +153,7 @@ Fertig (primary only): `Fertig · N frames · codec · bytes · audio: aac · fr
 | VIS function cycle | Implemented (`createVisualEngine.setScene`) |
 | File `.visualz.json` + recents | Implemented |
 | Inspector Style / Quelle | Implemented |
-| VIS family registry + Kaleido Loop | Implemented (`kaleido-loop`, seamless test) |
+| VIS family registry + Kaleido Loop | Implemented (`kaleido-loop` presets retained; new `kaleido-crystal` / `kaleido-petal` / `kaleido-tunnel`) |
 | Mixer A1 + Master | Implemented (not 64-stem) |
 | Loop-ranged export | Implemented (`resolveExportRange` on vis + A1) |
 | Window + timeline resize | Implemented (min 1280×720, splitter, lanes grow) |

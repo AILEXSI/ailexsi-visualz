@@ -5,6 +5,9 @@
 
 import type { SceneParams } from "../types";
 import { KALEIDO_LOOP_PRESETS, type KaleidoPresetId } from "./kaleido-loop";
+import { KALEIDO_CRYSTAL_DEFAULTS } from "./kaleido-crystal";
+import { KALEIDO_PETAL_DEFAULTS } from "./kaleido-petal";
+import { KALEIDO_TUNNEL_DEFAULTS } from "./kaleido-tunnel";
 import { LEXI_TERRAIN_GOLD_DEFAULTS } from "./lexi-terrain-gold";
 import { LEXI_TERRAIN_GOLD_FIELD_DEFAULTS } from "./lexi-terrain-gold-field";
 import { LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS } from "./lexi-terrain-gold-field-plus";
@@ -219,6 +222,36 @@ export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
     mode: "loop-seamless",
     preset: "cyan-pulse",
     params: KALEIDO_LOOP_PRESETS["cyan-pulse"],
+  },
+  {
+    id: "kaleido-crystal",
+    displayName: "Kaleido · Crystal",
+    shortName: "Crystal",
+    family: "Kaleido Loop",
+    description: "Hard prism facets — ice-white + gold, gated spin, kick edge flash",
+    renderer: "kaleido-crystal",
+    mode: "loop-seamless",
+    params: KALEIDO_CRYSTAL_DEFAULTS,
+  },
+  {
+    id: "kaleido-petal",
+    displayName: "Kaleido · Petal",
+    shortName: "Petal",
+    family: "Kaleido Loop",
+    description: "Soft petal flower — pink-gold, rms breathe, gated hue",
+    renderer: "kaleido-petal",
+    mode: "loop-seamless",
+    params: KALEIDO_PETAL_DEFAULTS,
+  },
+  {
+    id: "kaleido-tunnel",
+    displayName: "Kaleido · Tunnel",
+    shortName: "Tunnel",
+    family: "Kaleido Loop",
+    description: "Perspective mirrored rings — gated inward travel, neon",
+    renderer: "kaleido-tunnel",
+    mode: "loop-seamless",
+    params: KALEIDO_TUNNEL_DEFAULTS,
   },
 ];
 

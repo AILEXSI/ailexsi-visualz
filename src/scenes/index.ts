@@ -9,6 +9,9 @@ import { auroraRibbonScene } from "./aurora-ribbon";
 import { cymaticGridScene } from "./cymatic-grid";
 import { kickSunScene } from "./kick-sun";
 import { kaleidoLoopScene } from "./kaleido-loop";
+import { kaleidoCrystalScene } from "./kaleido-crystal";
+import { kaleidoPetalScene } from "./kaleido-petal";
+import { kaleidoTunnelScene } from "./kaleido-tunnel";
 import { lexiTerrainGoldScene } from "./lexi-terrain-gold";
 import { lexiTerrainGoldFieldScene } from "./lexi-terrain-gold-field";
 import { lexiTerrainGoldFieldPlusScene } from "./lexi-terrain-gold-field-plus";
@@ -26,6 +29,9 @@ export const builtinScenes: Scene[] = [
   tunnelSpiralScene,
   pulseOrbScene,
   kaleidoLoopScene,
+  kaleidoCrystalScene,
+  kaleidoPetalScene,
+  kaleidoTunnelScene,
   lexiTerrainGoldScene,
   lexiTerrainGoldFieldScene,
   lexiTerrainGoldFieldPlusScene,
@@ -44,6 +50,9 @@ export {
   cymaticGridScene,
   kickSunScene,
   kaleidoLoopScene,
+  kaleidoCrystalScene,
+  kaleidoPetalScene,
+  kaleidoTunnelScene,
   lexiTerrainGoldScene,
   lexiTerrainGoldFieldScene,
   lexiTerrainGoldFieldPlusScene,
