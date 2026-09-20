@@ -13,10 +13,14 @@ import { LEXI_TERRAIN_GOLD_FIELD_DEFAULTS } from "./lexi-terrain-gold-field";
 import { LEXI_TERRAIN_GOLD_FIELD_PLUS_DEFAULTS } from "./lexi-terrain-gold-field-plus";
 import { LEXI_TERRAIN_GOLD_HERO_DEFAULTS } from "./lexi-terrain-gold-hero";
 import { LEXI_TERRAIN_GOLD_P12_DEFAULTS } from "./lexi-terrain-gold-p12";
+import { LEXI_ENERGY_HORIZON_DEFAULTS } from "./lexi-energy-horizon";
+import { LEXI_ENERGY_FIELD_DEFAULTS } from "./lexi-energy-field";
+import { LEXI_ENERGY_SPECTRUM_DEFAULTS } from "./lexi-energy-spectrum";
 
 export const VIS_FAMILIES = [
   "LEXI",
   "LEXI Terrain Gold",
+  "LEXI Energy",
   "Classic",
   "Flow",
   "Geometry",
@@ -90,6 +94,36 @@ export const SCENE_CATALOG: readonly SceneCatalogEntry[] = [
     renderer: "lexi-terrain-gold-p12",
     mode: "loop-seamless",
     params: LEXI_TERRAIN_GOLD_P12_DEFAULTS,
+  },
+  {
+    id: "lexi-energy-horizon",
+    displayName: "LEXI · Energy Horizon",
+    shortName: "Energy Horizon",
+    family: "LEXI Energy",
+    description: "Frontal gold energy field — vanishing-point horizon, lines on black.",
+    renderer: "lexi-energy-horizon",
+    mode: "loop-seamless",
+    params: LEXI_ENERGY_HORIZON_DEFAULTS,
+  },
+  {
+    id: "lexi-energy-field",
+    displayName: "LEXI · Energy Field",
+    shortName: "Energy Field",
+    family: "LEXI Energy",
+    description: "Denser converging energy lines. Black gaps. Audio-gated travel.",
+    renderer: "lexi-energy-field",
+    mode: "loop-seamless",
+    params: LEXI_ENERGY_FIELD_DEFAULTS,
+  },
+  {
+    id: "lexi-energy-spectrum",
+    displayName: "LEXI · Energy Spectrum",
+    shortName: "Energy Spectrum",
+    family: "LEXI Energy",
+    description: "Energy field plus irregular vertical wisps above the horizon.",
+    renderer: "lexi-energy-spectrum",
+    mode: "loop-seamless",
+    params: LEXI_ENERGY_SPECTRUM_DEFAULTS,
   },
   {
     id: "resonance-wave",

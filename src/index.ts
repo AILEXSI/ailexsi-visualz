@@ -290,6 +290,24 @@ export {
   LEXI_TERRAIN_GOLD_P12_MODE,
   lexiTerrainGoldP12Scene,
 } from "./scenes/lexi-terrain-gold-p12";
+export {
+  LEXI_ENERGY_HORIZON_DEFAULTS,
+  LEXI_ENERGY_HORIZON_FAMILY,
+  LEXI_ENERGY_HORIZON_ID,
+  lexiEnergyHorizonScene,
+} from "./scenes/lexi-energy-horizon";
+export {
+  LEXI_ENERGY_FIELD_DEFAULTS,
+  LEXI_ENERGY_FIELD_FAMILY,
+  LEXI_ENERGY_FIELD_ID,
+  lexiEnergyFieldScene,
+} from "./scenes/lexi-energy-field";
+export {
+  LEXI_ENERGY_SPECTRUM_DEFAULTS,
+  LEXI_ENERGY_SPECTRUM_FAMILY,
+  LEXI_ENERGY_SPECTRUM_ID,
+  lexiEnergySpectrumScene,
+} from "./scenes/lexi-energy-spectrum";
 export { createGlPost } from "./gl/post-pipeline";
 export { bloomMips } from "./gl/mip";
 export { BLOOM_WEIGHTS, normalizeWeights } from "./gl/bloom-config";

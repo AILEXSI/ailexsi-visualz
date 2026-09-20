@@ -17,6 +17,9 @@ import { lexiTerrainGoldFieldScene } from "./lexi-terrain-gold-field";
 import { lexiTerrainGoldFieldPlusScene } from "./lexi-terrain-gold-field-plus";
 import { lexiTerrainGoldHeroScene } from "./lexi-terrain-gold-hero";
 import { lexiTerrainGoldP12Scene } from "./lexi-terrain-gold-p12";
+import { lexiEnergyHorizonScene } from "./lexi-energy-horizon";
+import { lexiEnergyFieldScene } from "./lexi-energy-field";
+import { lexiEnergySpectrumScene } from "./lexi-energy-spectrum";
 
 export const builtinScenes: Scene[] = [
   resonanceWaveScene,
@@ -37,6 +40,9 @@ export const builtinScenes: Scene[] = [
   lexiTerrainGoldFieldPlusScene,
   lexiTerrainGoldHeroScene,
   lexiTerrainGoldP12Scene,
+  lexiEnergyHorizonScene,
+  lexiEnergyFieldScene,
+  lexiEnergySpectrumScene,
 ];
 
 export {
@@ -58,4 +64,7 @@ export {
   lexiTerrainGoldFieldPlusScene,
   lexiTerrainGoldHeroScene,
   lexiTerrainGoldP12Scene,
+  lexiEnergyHorizonScene,
+  lexiEnergyFieldScene,
+  lexiEnergySpectrumScene,
 };

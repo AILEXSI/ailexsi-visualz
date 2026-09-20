@@ -12,6 +12,7 @@ describe("VIS style registry", () => {
     expect([...VIS_FAMILIES]).toEqual([
       "LEXI",
       "LEXI Terrain Gold",
+      "LEXI Energy",
       "Classic",
       "Flow",
       "Geometry",
@@ -56,6 +57,11 @@ describe("VIS style registry", () => {
       "lexi-terrain-gold-field-plus",
       "lexi-terrain-gold-hero",
       "lexi-terrain-gold-p12",
+    ]);
+    expect(catalogEntriesFor("LEXI Energy").map((e) => e.id)).toEqual([
+      "lexi-energy-horizon",
+      "lexi-energy-field",
+      "lexi-energy-spectrum",
     ]);
   });
 });
