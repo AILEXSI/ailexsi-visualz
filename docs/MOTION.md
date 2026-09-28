@@ -16,6 +16,7 @@ Implemented:
 - `src/draw/color.ts`
 - `src/audio/feature-extractor.ts` (spectral flux + silence gate)
 - `src/scenes/resonance-wave.ts`
+- `src/scenes/resonance-dunes.ts`
 
 Still to land on main (local patch exists):
 - spectrum-bars (log + peak caps)
