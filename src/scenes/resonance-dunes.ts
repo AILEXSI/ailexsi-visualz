@@ -239,7 +239,8 @@ export const resonanceDunesScene: Scene = {
         const u = pts[i].u;
         const ridge = Math.sin(u * Math.PI * 3 + phase * 0.35 + v * 2);
         if (ridge < 0.58) continue;
-        const detail = u > 0.66 ? hat : 0.4 + energy * 0.6;
+        // Right-side grit needs treble/hat. Hats alone stay in foreground glitter.
+        const detail = u > 0.66 ? Math.min(energy, hat) : energy;
         if (detail <= 0.04) continue;
         const s = seedFrom(features.timeMs, trackSeed, j * 131 + i);
         const chance = Math.min(0.9, (0.08 + complexity * 0.22) * detail * densify);
