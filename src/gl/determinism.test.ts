@@ -13,6 +13,7 @@ describe("no accidental Math.random in engine core", () => {
       join(root, "gl/post-pipeline.ts"),
       join(root, "gl/feedback.ts"),
       join(root, "scenes/resonance-wave.ts"),
+      join(root, "scenes/resonance-dunes.ts"),
       join(root, "audio/feature-extractor.ts"),
     ];
     for (const f of files) {

@@ -47,6 +47,7 @@ const files = [
   "src/gl/post-pipeline.ts",
   "src/gl/feedback.ts",
   "src/scenes/resonance-wave.ts",
+  "src/scenes/resonance-dunes.ts",
   "src/audio/feature-extractor.ts",
 ];
 for (const f of files) {

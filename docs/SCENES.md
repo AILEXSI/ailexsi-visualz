@@ -20,6 +20,18 @@ Halo capsule + body + inner highlight + reflection + bloom.
 
 Possible leftover left spikes without audible bass: check speakers/FFT floor before remapping.
 
+## resonance-dunes — IN PROGRESS
+
+Generative golden particle landscape (Canvas2D heightfield, existing WebGL2 post). Not HUMAN-PROVEN.
+
+Lock before calling it hero:
+
+1. Silence: phase frozen, orb dim, no marching wind
+2. Bass pad without kick: dunes breathe, landmark calm
+3. Kick: orb + ground ring only; left/front mass does not jump with the kick
+4. Hats: foreground sparkle only
+5. Drop: denser field + stronger post, geometry continuity kept
+
 ## lita-bloom — in progress (hero light)
 
 Teardrop petals, veins, kick-dust, petal halo. Same bloom/core grammar.
